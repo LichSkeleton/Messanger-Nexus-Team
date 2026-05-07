@@ -1,0 +1,8 @@
+services:
+  messenger-ui:
+    build:
+      context: .
+    container_name: nexusteam_messenger
+    ports:
+      - "8080:80"
+    restart: unless-stopped
