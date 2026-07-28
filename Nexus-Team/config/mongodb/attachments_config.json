@@ -1,0 +1,88 @@
+{
+    "collectionName": "attachments",
+    "validator": {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+                "messageId",
+                "fileName",
+                "filePath",
+                "fileSize",
+                "contentType",
+                "attachmentType",
+                "uploadedAt"
+            ],
+            "properties": {
+                "_id": {
+                    "bsonType": "string"
+                },
+                "messageId": {
+                    "bsonType": "string"
+                },
+                "fileName": {
+                    "bsonType": "string",
+                    "maxLength": 255
+                },
+                "filePath": {
+                    "bsonType": "string",
+                    "maxLength": 500
+                },
+                "thumbnailPath": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ],
+                    "maxLength": 500
+                },
+                "fileSize": {
+                    "bsonType": "long",
+                    "minimum": 1,
+                    "maximum": 104857600,
+                    "description": "File size in bytes (max 100MB)"
+                },
+                "contentType": {
+                    "bsonType": "string",
+                    "maxLength": 100
+                },
+                "attachmentType": {
+                    "bsonType": "int",
+                    "enum": [
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        99
+                    ],
+                    "description": "0=Image, 1=Video, 2=Audio, 3=Document, 4=Archive, 5=Code, 99=Other"
+                },
+                "uploadedAt": {
+                    "bsonType": "date"
+                }
+            }
+        }
+    },
+    "validationLevel": "moderate",
+    "validationAction": "error",
+    "indexes": [
+        {
+            "key": {
+                "messageId": 1
+            },
+            "name": "idx_attachments_message"
+        },
+        {
+            "key": {
+                "uploadedAt": 1
+            },
+            "name": "idx_attachments_uploaded"
+        },
+        {
+            "key": {
+                "attachmentType": 1
+            },
+            "name": "idx_attachments_type"
+        }
+    ]
+}

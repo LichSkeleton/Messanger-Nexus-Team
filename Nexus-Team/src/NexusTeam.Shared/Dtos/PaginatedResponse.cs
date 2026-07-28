@@ -1,0 +1,47 @@
+namespace NexusTeam.Shared.Dtos
+{
+    using System.Collections.Generic;
+
+    /// <summary>
+    /// Generic response DTO for paginated data.
+    /// Contains a page of items along with pagination metadata.
+    /// </summary>
+    /// <typeparam name="T">The type of items in the result set.</typeparam>
+    public class PaginatedResponse<T>
+    {
+        /// <summary>
+        /// Gets or sets the items in the current page.
+        /// </summary>
+        public List<T> Items { get; set; } = new List<T>();
+
+        /// <summary>
+        /// Gets or sets the current page number (1-based).
+        /// </summary>
+        public int Page { get; set; }
+
+        /// <summary>
+        /// Gets or sets the number of items per page.
+        /// </summary>
+        public int PageSize { get; set; }
+
+        /// <summary>
+        /// Gets or sets the total number of items across all pages.
+        /// </summary>
+        public int TotalCount { get; set; }
+
+        /// <summary>
+        /// Gets or sets the total number of pages.
+        /// </summary>
+        public int TotalPages { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether there is a next page.
+        /// </summary>
+        public bool HasNextPage => this.Page < this.TotalPages;
+
+        /// <summary>
+        /// Gets a value indicating whether there is a previous page.
+        /// </summary>
+        public bool HasPreviousPage => this.Page > 1;
+    }
+}

@@ -1,0 +1,107 @@
+{
+    "collectionName": "messages",
+    "validator": {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+                "chatId",
+                "senderId",
+                "content",
+                "status",
+                "createdAt",
+                "isDeleted"
+            ],
+            "properties": {
+                "_id": {
+                    "bsonType": "string"
+                },
+                "chatId": {
+                    "bsonType": "string"
+                },
+                "senderId": {
+                    "bsonType": "string"
+                },
+                "content": {
+                    "bsonType": "string",
+                    "maxLength": 4000
+                },
+                "status": {
+                    "bsonType": "int",
+                    "enum": [
+                        0,
+                        1,
+                        2,
+                        3
+                    ],
+                    "description": "0=Sent, 1=Delivered, 2=Read, 3=Failed"
+                },
+                "createdAt": {
+                    "bsonType": "date"
+                },
+                "editedAt": {
+                    "bsonType": [
+                        "date",
+                        "null"
+                    ]
+                },
+                "replyToId": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "isDeleted": {
+                    "bsonType": "bool"
+                },
+                "reactions": {
+                    "bsonType": [
+                        "object",
+                        "null"
+                    ],
+                    "description": "Dictionary of emoji to list of user IDs who reacted"
+                }
+            }
+        }
+    },
+    "validationLevel": "moderate",
+    "validationAction": "error",
+    "indexes": [
+        {
+            "key": {
+                "chatId": 1
+            },
+            "name": "idx_messages_chat_id"
+        },
+        {
+            "key": {
+                "senderId": 1
+            },
+            "name": "idx_messages_sender_id"
+        },
+        {
+            "key": {
+                "createdAt": 1
+            },
+            "name": "idx_messages_created_at"
+        },
+        {
+            "key": {
+                "replyToId": 1
+            },
+            "name": "idx_messages_reply_to_id"
+        },
+        {
+            "key": {
+                "isDeleted": 1
+            },
+            "name": "idx_messages_is_deleted"
+        },
+        {
+            "key": {
+                "chatId": 1,
+                "createdAt": -1
+            },
+            "name": "idx_messages_chatId_sentAt"
+        }
+    ]
+}

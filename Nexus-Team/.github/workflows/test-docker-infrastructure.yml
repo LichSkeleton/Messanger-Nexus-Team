@@ -1,0 +1,249 @@
+# GitHub Actions workflow to test Docker infrastructure
+name: Test Docker Infrastructure
+
+on:
+  push:
+    branches: [main, develop, feature/docker-*]
+    paths:
+      - 'docker-compose.yaml'
+      - 'src/NexusTeam.DbSeeder/**'
+      - 'config/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'docker-compose.yaml'
+      - 'src/NexusTeam.DbSeeder/**'
+      - 'config/**'
+  workflow_dispatch:
+
+jobs:
+  test-infrastructure:
+    name: Test Database Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Start Docker Infrastructure
+        run: |
+          cd Nexus-Team
+          docker-compose up -d --build
+
+      - name: Wait for MongoDB to be ready
+        run: |
+          echo "Waiting for MongoDB mongos router..."
+          for i in {1..30}; do
+            if docker exec nexusteam_mongos mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+              echo "MongoDB is ready!"
+              break
+            fi
+            echo "Attempt $i/30: MongoDB not ready yet..."
+            sleep 10
+          done
+
+      - name: Wait for Oracle to be ready
+        run: |
+          echo "Waiting for Oracle database..."
+          for i in {1..60}; do
+            if docker exec nexusteam_oracle sh -c "echo 'SELECT 1 FROM DUAL;' | sqlplus -s nexusteam_user/nexusteam_password@XEPDB1" &>/dev/null; then
+              echo "Oracle is ready!"
+              break
+            fi
+            echo "Attempt $i/60: Oracle not ready yet..."
+            sleep 10
+          done
+
+      - name: Wait for Redis to be ready
+        run: |
+          echo "Waiting for Redis..."
+          for i in {1..10}; do
+            if docker exec nexusteam_redis redis-cli ping | grep -q "PONG"; then
+              echo "Redis is ready!"
+              break
+            fi
+            echo "Attempt $i/10: Redis not ready yet..."
+            sleep 5
+          done
+
+      - name: Wait for DB Seeder to complete
+        run: |
+          echo "Waiting for database seeder to complete..."
+          docker wait nexusteam_db_seeder
+          exit_code=$(docker inspect nexusteam_db_seeder --format='{{.State.ExitCode}}')
+          echo "Seeder exit code: $exit_code"
+          
+          if [ $exit_code -ne 0 ]; then
+            echo "❌ Database seeder failed!"
+            echo "Seeder logs:"
+            docker logs nexusteam_db_seeder
+            exit 1
+          fi
+          
+          echo "✓ Database seeder completed successfully!"
+
+      - name: Show Seeder Logs
+        run: |
+          echo "=== Database Seeder Logs ==="
+          docker logs nexusteam_db_seeder
+
+      - name: Verify MongoDB Collections
+        run: |
+          echo "Verifying MongoDB collections..."
+          docker exec nexusteam_mongos mongosh --eval "
+            use NexusTeam;
+            const collections = db.getCollectionNames();
+            print('Collections: ' + collections.join(', '));
+            
+            if (!collections.includes('chats')) {
+              throw new Error('Collection chats not found');
+            }
+            if (!collections.includes('messages')) {
+              throw new Error('Collection messages not found');
+            }
+            if (!collections.includes('attachments')) {
+              throw new Error('Collection attachments not found');
+            }
+            if (!collections.includes('user_preferences')) {
+              throw new Error('Collection user_preferences not found');
+            }
+            
+            print('✓ All collections exist');
+          "
+
+      - name: Verify MongoDB Indexes
+        run: |
+          echo "Verifying MongoDB indexes..."
+          docker exec nexusteam_mongos mongosh --eval "
+            use NexusTeam;
+            const chatsIndexes = db.chats.getIndexes();
+            print('Chats indexes: ' + chatsIndexes.length);
+            
+            if (chatsIndexes.length < 5) {
+              throw new Error('Not enough indexes on chats collection');
+            }
+            
+            print('✓ Indexes created successfully');
+          "
+
+      - name: Verify MongoDB Sharding
+        run: |
+          echo "Verifying MongoDB sharding..."
+          docker exec nexusteam_mongos mongosh --eval "
+            const status = sh.status();
+            print('Shard status retrieved');
+            
+            const shards = db.getSiblingDB('config').shards.find().toArray();
+            print('Number of shards: ' + shards.length);
+            
+            if (shards.length < 2) {
+              throw new Error('Expected at least 2 shards, found ' + shards.length);
+            }
+            
+            print('✓ Sharding configured correctly');
+          "
+
+      - name: Verify Oracle Tables
+        run: |
+          echo "Verifying Oracle tables..."
+          docker exec nexusteam_oracle sh -c "
+            echo \"SELECT table_name FROM user_tables WHERE table_name = 'USERS';\" | \
+            sqlplus -s nexusteam_user/nexusteam_password@XEPDB1
+          " | grep -q "USERS"
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Users table not found"
+            exit 1
+          fi
+          
+          echo "✓ Oracle tables created successfully"
+
+      - name: Verify Redis Connection
+        run: |
+          echo "Verifying Redis connection..."
+          docker exec nexusteam_redis redis-cli INFO server | grep "redis_version"
+          echo "✓ Redis is operational"
+
+      - name: Test Hot-Reload (Modify Config and Re-run Seeder)
+        run: |
+          echo "Testing hot-reload feature..."
+          
+          # Add a comment to config file
+          echo "// Test hot-reload $(date)" >> Nexus-Team/config/mongodb/chats_config.json
+          
+          # Restart seeder
+          cd Nexus-Team
+          docker-compose restart db-seeder
+          
+          # Wait for completion
+          docker wait nexusteam_db_seeder
+          exit_code=$(docker inspect nexusteam_db_seeder --format='{{.State.ExitCode}}')
+          
+          if [ $exit_code -ne 0 ]; then
+            echo "❌ Hot-reload test failed"
+            docker logs nexusteam_db_seeder
+            exit 1
+          fi
+          
+          echo "✓ Hot-reload works correctly"
+
+      - name: Test Idempotency (Run Seeder Again)
+        run: |
+          echo "Testing idempotency..."
+          
+          cd Nexus-Team
+          docker-compose up db-seeder
+          
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "❌ Idempotency test failed"
+            docker logs nexusteam_db_seeder
+            exit 1
+          fi
+          
+          echo "✓ Idempotency works correctly"
+
+      - name: Collect Logs on Failure
+        if: failure()
+        run: |
+          echo "=== All Container Logs ==="
+          docker-compose -f Nexus-Team/docker-compose.yaml logs --tail=100
+
+      - name: Shutdown Infrastructure
+        if: always()
+        run: |
+          cd Nexus-Team
+          docker-compose down -v
+
+  test-seeder-build:
+    name: Test DbSeeder Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: |
+          cd Nexus-Team
+          dotnet restore src/NexusTeam.DbSeeder/NexusTeam.DbSeeder.csproj
+
+      - name: Build DbSeeder
+        run: |
+          cd Nexus-Team
+          dotnet build src/NexusTeam.DbSeeder/NexusTeam.DbSeeder.csproj -c Release --no-restore
+
+      - name: Run unit tests (if any)
+        run: |
+          cd Nexus-Team
+          # Add unit tests here when available
+          echo "No unit tests yet"

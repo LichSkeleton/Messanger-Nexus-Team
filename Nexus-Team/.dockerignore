@@ -1,11 +1,61 @@
+# Git
 .git
 .gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# Build artifacts
+**/bin/
+**/obj/
+**/out/
+build_log.txt
+
+# IDE
+.vs/
 .vscode/
 .idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Test files
+**/TestResults/
+**/*.coverage
+**/*.coveragexml
+
+# Node modules (if any)
 node_modules/
-*.log
+npm-debug.log
+
+# Environment files
 .env
-.env.*
-README.md
+.env.local
+*.Development.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Docker
 docker-compose.yaml
 docker-compose.yml
+Dockerfile
+
+# Scripts
+scripts/
+
+# Config (mounted as volume, not copied)
+config/
+
+# Client builds
+**/wwwroot/
+**/dist/
+**/publish/

@@ -1,0 +1,297 @@
+<UserControl x:Class="NexusTeam.Client.Views.EmojiPicker"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
+             Width="440" Height="520"
+             Background="Transparent"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True"
+             ClipToBounds="True">
+    <UserControl.Resources>
+        <Style x:Key="CategoryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#40FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Custom ScrollBar Style - Telegram-like Ultra Thin with Rounded Edges -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="3"/>
+            <Setter Property="MinWidth" Value="3"/>
+            <Setter Property="MaxWidth" Value="3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid>
+                            <!-- Track - Subtle background -->
+                            <Border x:Name="Track" 
+                                    Background="#1A1A2E" 
+                                    CornerRadius="4"
+                                    Opacity="0.4"
+                                    Margin="0,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Width" Value="3"/>
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource TemplatedParent}}" Value="Horizontal">
+                                                <Setter Property="Width" Value="Auto"/>
+                                                <Setter Property="Height" Value="10"/>
+                                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                                <Setter Property="VerticalAlignment" Value="Bottom"/>
+                                                <Setter Property="Opacity" Value="1"/>
+                                                <Setter Property="Background" Value="#FF00FF"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Track x:Name="PART_Track" 
+                                   IsDirectionReversed="True"
+                                   Focusable="False">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBorder"
+                                                        Background="#8A8AAA"
+                                                        CornerRadius="4"
+                                                        Opacity="1"
+                                                        Margin="0,0"
+                                                        UseLayoutRounding="True"
+                                                        SnapsToDevicePixels="True">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#AAAAAA"/>
+                                                                    <Setter Property="Opacity" Value="1"/>
+                                                                </Trigger>
+                                                                <DataTrigger Binding="{Binding IsDragging, RelativeSource={RelativeSource AncestorType=Thumb}}" Value="True">
+                                                                    <Setter Property="Background" Value="#BABABA"/>
+                                                                    <Setter Property="Opacity" Value="1"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="Horizontal">
+                                                                    <Setter Property="Background" Value="#9A9ABA"/>
+                                                                    <Setter Property="Height" Value="10"/>
+                                                                    <Setter Property="MinHeight" Value="10"/>
+                                                                    <Setter Property="MaxHeight" Value="10"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="10"/>
+                    <Setter Property="MinHeight" Value="10"/>
+                    <Setter Property="MaxHeight" Value="10"/>
+                    <Setter Property="Width" Value="Auto"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <Border CornerRadius="18" Background="#2A2C40" BorderBrush="#40FFFFFF" BorderThickness="1"
+            TextOptions.TextFormattingMode="Display"
+            TextOptions.TextRenderingMode="ClearType"
+            ClipToBounds="True">
+        <Grid ClipToBounds="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Category Tabs -->
+            <Border Grid.Row="0" Background="#2A2C40" BorderBrush="#30FFFFFF" BorderThickness="0,0,0,1" 
+                    CornerRadius="18,18,0,0" ClipToBounds="False">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="3"/>
+                    </Grid.RowDefinitions>
+                    <ScrollViewer Grid.Row="0" x:Name="CategoryScrollViewer" 
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" 
+                                  VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left"
+                                  CanContentScroll="False">
+                        <StackPanel Orientation="Horizontal" Margin="5,0">
+                        <Button x:Name="RecentButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Recent"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="🕒" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="SmileysButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Smileys"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="😀" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="PeopleButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="People"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="👤" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="AnimalsButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Animals"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="🐶" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="FoodButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Food"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="🍕" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="TravelButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Travel"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="✈️" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="ActivitiesButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Activities"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="⚽" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="ObjectsButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Objects"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="💡" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="SymbolsButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Symbols"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="❤️" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="FlagsButton" Width="35" Height="35" 
+                                Margin="2" Padding="0" Cursor="Hand"
+                                Click="CategoryButton_Click" Tag="Flags"
+                                Style="{StaticResource CategoryButtonStyle}">
+                            <emoji:TextBlock FontSize="16" Text="🏳️" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <!-- Custom Horizontal ScrollBar Track -->
+                    <Border Grid.Row="1" 
+                            Background="#1A1A2E" 
+                            CornerRadius="4"
+                            Opacity="0.4"
+                            Height="3"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            Margin="0"
+                            x:Name="CategoryScrollTrack"
+                            MouseLeftButtonDown="CategoryScrollTrack_MouseLeftButtonDown"
+                            Cursor="Hand">
+                        <!-- ScrollBar Thumb (will be positioned via code if needed) -->
+                        <Border Background="#6A6A8A"
+                                CornerRadius="4"
+                                Opacity="0.8"
+                                Height="3"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Stretch"
+                                Width="50"
+                                x:Name="CategoryScrollThumb"
+                                Cursor="Arrow"/>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Emoji Grid -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="5">
+                <ItemsControl x:Name="EmojiItemsControl">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="9"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Width="44" 
+                                    Height="44" 
+                                    Margin="2" 
+                                    Padding="0"
+                                    Cursor="Hand"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="EmojiButton_Click"
+                                    ToolTip="{Binding Mode=OneWay}">
+                                <emoji:TextBlock FontSize="30"
+                                           VerticalAlignment="Center" 
+                                           HorizontalAlignment="Center"
+                                           Text="{Binding Mode=OneWay}"/>
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" 
+                                                            CornerRadius="6"
+                                                            UseLayoutRounding="True"
+                                                            SnapsToDevicePixels="True">
+                                                        <ContentPresenter HorizontalAlignment="Center" 
+                                                                          VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#40FFFFFF"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</UserControl>
+

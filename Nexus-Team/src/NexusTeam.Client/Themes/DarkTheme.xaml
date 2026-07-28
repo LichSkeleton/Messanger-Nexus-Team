@@ -1,0 +1,67 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <BitmapImage x:Key="AppBackgroundImageSource" UriSource="pack://application:,,,/Views/bg_nexusteam.png"/>
+    <SolidColorBrush x:Key="AppBackgroundFallbackBrush" Color="#FF101010"/>
+    
+    <!-- ДОБАВЛЕНО для вашего SettingsView -->
+    <SolidColorBrush x:Key="AppOverlayBrush" Color="#99000000"/>
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="White"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#90FFFFFF"/>
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#AAAAAA"/>
+    <SolidColorBrush x:Key="TextInverseBrush" Color="Black"/>
+    <SolidColorBrush x:Key="GlassPanelBackgroundBrush" Color="#0DFFFFFF"/>
+    
+    <LinearGradientBrush x:Key="GlassPanelBorderBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#60FFFFFF" Offset="0.0"/>
+        <GradientStop Color="#00FFFFFF" Offset="0.5"/>
+        <GradientStop Color="#20FFFFFF" Offset="1.0"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#20FFFFFF"/>
+
+    <SolidColorBrush x:Key="NavButtonBackgroundBrush" Color="#3D2E1E"/>
+    <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#5A4025"/>
+    <SolidColorBrush x:Key="NavButtonPressedBrush" Color="#2E2218"/>
+    <SolidColorBrush x:Key="IconBrush" Color="White"/>
+
+    <SolidColorBrush x:Key="MessageBubbleMeBrush" Color="#25FFFFFF"/>
+    <SolidColorBrush x:Key="MessageBubbleMeBorderBrush" Color="#30FFFFFF"/>
+    <SolidColorBrush x:Key="MessageBubbleOtherBrush" Color="#40000000"/>
+    
+    <SolidColorBrush x:Key="InputBackgroundBrush" Color="#25FFFFFF"/>
+    <SolidColorBrush x:Key="SearchInputBackgroundBrush" Color="#20FFFFFF"/>
+
+    <SolidColorBrush x:Key="AccentColorBrush" Color="#FFFF8C00"/>
+    <SolidColorBrush x:Key="ErrorColorBrush" Color="#FF6B6B"/>
+    <SolidColorBrush x:Key="CodePreviewBrush" Color="#FF8C00"/>
+
+    <!-- Profile Modal Colors -->
+    <SolidColorBrush x:Key="ProfileOverlayBrush" Color="#80000000"/>
+    <LinearGradientBrush x:Key="ProfileModalBackgroundBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#DD1E1710" Offset="0"/>
+        <GradientStop Color="#DD2A1E10" Offset="1"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="ProfileModalBorderBrush" Color="#40FFFFFF"/>
+    <SolidColorBrush x:Key="ProfileHeaderTextBrush" Color="White"/>
+    <SolidColorBrush x:Key="ProfileSubtextBrush" Color="#B0B0B0"/>
+    <SolidColorBrush x:Key="ProfileEmailTextBrush" Color="#D0D0D0"/>
+    <SolidColorBrush x:Key="ProfileAvatarBorderBrush" Color="#FF8C00"/>
+    <SolidColorBrush x:Key="ProfileAvatarBackgroundBrush" Color="#252545"/>
+    <SolidColorBrush x:Key="ProfileStatBackgroundBrush" Color="#20FFFFFF"/>
+    <SolidColorBrush x:Key="ProfileButtonBackgroundBrush" Color="#20FFFFFF"/>
+    <SolidColorBrush x:Key="ProfileButtonHoverBrush" Color="#30FFFFFF"/>
+    <SolidColorBrush x:Key="ProfileAccentButtonBrush" Color="#FF8C00"/>
+    <SolidColorBrush x:Key="ProfileAccentButtonHoverBrush" Color="#E07800"/>
+    <SolidColorBrush x:Key="ProfileDangerTextBrush" Color="#FF4444"/>
+
+    <!-- Старые ресурсы для обратной совместимости со Styles.xaml -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#1E1E1E"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#2D2D30"/>
+    <SolidColorBrush x:Key="SecondaryBrush" Color="#3E3E42"/>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="#FF8C00"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#FFFFFF"/>
+    <!-- TextSecondaryBrush уже определен выше -->
+    <SolidColorBrush x:Key="BorderBrush" Color="#3F3F46"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#F14C4C"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FFA040"/>
+</ResourceDictionary>

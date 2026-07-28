@@ -1,0 +1,140 @@
+{
+  "collectionName": "user_preferences",
+  "validator": {
+    "$jsonSchema": {
+      "bsonType": "object",
+      "required": [
+        "userId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "userId": {
+          "bsonType": "string",
+          "description": "User ID - required and must be a string"
+        },
+        "theme": {
+          "bsonType": "string",
+          "enum": [
+            "light",
+            "dark",
+            "auto"
+          ],
+          "description": "UI theme preference - must be light, dark, or auto"
+        },
+        "language": {
+          "bsonType": "string",
+          "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+          "description": "Language preference in ISO 639-1 format (e.g., en, en-US)"
+        },
+        "notificationSettings": {
+          "bsonType": "object",
+          "properties": {
+            "enableSound": {
+              "bsonType": "bool",
+              "description": "Enable notification sounds"
+            },
+            "enableDesktop": {
+              "bsonType": "bool",
+              "description": "Enable desktop notifications"
+            },
+            "enableEmail": {
+              "bsonType": "bool",
+              "description": "Enable email notifications"
+            },
+            "muteUntil": {
+              "bsonType": [
+                "date",
+                "null"
+              ],
+              "description": "Mute notifications until this timestamp"
+            }
+          },
+          "description": "Notification preferences"
+        },
+        "privacySettings": {
+          "bsonType": "object",
+          "properties": {
+            "showOnlineStatus": {
+              "bsonType": "bool",
+              "description": "Show online status to other users"
+            },
+            "showLastSeen": {
+              "bsonType": "bool",
+              "description": "Show last seen timestamp"
+            },
+            "allowDirectMessages": {
+              "bsonType": "bool",
+              "description": "Allow direct messages from non-contacts"
+            },
+            "readReceipts": {
+              "bsonType": "bool",
+              "description": "Send read receipts for messages"
+            }
+          },
+          "description": "Privacy settings"
+        },
+        "chatSettings": {
+          "bsonType": "object",
+          "properties": {
+            "fontSize": {
+              "bsonType": "int",
+              "minimum": 10,
+              "maximum": 24,
+              "description": "Font size for chat messages (10-24)"
+            },
+            "enterToSend": {
+              "bsonType": "bool",
+              "description": "Press Enter to send message (vs Ctrl+Enter)"
+            },
+            "showTimestamps": {
+              "bsonType": "bool",
+              "description": "Show timestamps on messages"
+            },
+            "compactMode": {
+              "bsonType": "bool",
+              "description": "Use compact message display"
+            }
+          },
+          "description": "Chat interface preferences"
+        },
+        "customSettings": {
+          "bsonType": "object",
+          "description": "Additional custom settings as key-value pairs"
+        },
+        "createdAt": {
+          "bsonType": "date",
+          "description": "Timestamp when preferences were created - required"
+        },
+        "updatedAt": {
+          "bsonType": "date",
+          "description": "Timestamp when preferences were last updated - required"
+        }
+      }
+    }
+  },
+  "validationLevel": "moderate",
+  "validationAction": "error",
+  "indexes": [
+    {
+      "name": "idx_user_preferences_user_id",
+      "key": {
+        "userId": 1
+      },
+      "unique": true
+    },
+    {
+      "name": "idx_user_preferences_user_updated",
+      "key": {
+        "userId": 1,
+        "updatedAt": -1
+      }
+    },
+    {
+      "name": "idx_user_preferences_ttl",
+      "key": {
+        "updatedAt": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,285 @@
+# ============================================================================
+# Script: Provision-Database.ps1
+# Description: Provisions Oracle, MongoDB, and Redis for Nexus Team
+# Usage: .\Provision-Database.ps1 [-SkipOracle] [-SkipMongo] [-SkipRedis]
+# ============================================================================
+
+[CmdletBinding()]
+param(
+    [switch]$SkipOracle,
+    [switch]$SkipMongo,
+    [switch]$SkipRedis,
+    [switch]$Verbose
+)
+
+# Set error action preference
+$ErrorActionPreference = "Stop"
+
+# Script paths
+$scriptRoot = $PSScriptRoot
+$projectRoot = Split-Path (Split-Path $scriptRoot -Parent) -Parent
+$configRoot = Join-Path $projectRoot "config"
+$oracleScriptsPath = Join-Path $configRoot "oracle"
+$mongoScriptsPath = Join-Path $configRoot "mongodb"
+
+# Load environment variables from .env file
+function Load-EnvFile {
+    param([string]$envFilePath)
+    
+    if (-not (Test-Path $envFilePath)) {
+        Write-Error "Environment file not found: $envFilePath"
+        Write-Host "Please copy .env.template to .env and configure your settings."
+        exit 1
+    }
+    
+    Write-Host "Loading environment variables from: $envFilePath" -ForegroundColor Cyan
+    
+    Get-Content $envFilePath | ForEach-Object {
+        $line = $_.Trim()
+        
+        # Skip empty lines and comments
+        if ($line -eq "" -or $line.StartsWith("#")) {
+            return
+        }
+        
+        # Parse key=value, handling variable substitution
+        if ($line -match "^([^=]+)=(.*)$") {
+            $key = $matches[1].Trim()
+            $value = $matches[2].Trim()
+            
+            # Simple variable substitution for ${VAR} patterns
+            $value = [regex]::Replace($value, '\$\{([^}]+)\}', {
+                param($match)
+                $varName = $match.Groups[1].Value
+                $envValue = [Environment]::GetEnvironmentVariable($varName, "Process")
+                if ($envValue) { return $envValue } else { return $match.Value }
+            })
+            
+            [Environment]::SetEnvironmentVariable($key, $value, "Process")
+        }
+    }
+}
+
+# Provision Oracle database
+function Provision-Oracle {
+    Write-Host "`n========================================" -ForegroundColor Green
+    Write-Host "Provisioning Oracle Database" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Green
+    
+    $oracleUser = [Environment]::GetEnvironmentVariable("ORACLE_USER")
+    $oraclePassword = [Environment]::GetEnvironmentVariable("ORACLE_PASSWORD")
+    $oracleHost = [Environment]::GetEnvironmentVariable("ORACLE_HOST")
+    $oraclePort = [Environment]::GetEnvironmentVariable("ORACLE_PORT")
+    $oracleService = [Environment]::GetEnvironmentVariable("ORACLE_SERVICE_NAME")
+    
+    if (-not $oracleUser -or -not $oraclePassword) {
+        Write-Warning "Oracle credentials not configured. Skipping Oracle provisioning."
+        return
+    }
+    
+    $connectionString = "$oracleUser/$oraclePassword@$oracleHost:$oraclePort/$oracleService"
+    
+    # Get Oracle SQL scripts in order
+    $sqlScripts = Get-ChildItem -Path $oracleScriptsPath -Filter "*.sql" | Sort-Object Name
+    
+    if ($sqlScripts.Count -eq 0) {
+        Write-Warning "No SQL scripts found in $oracleScriptsPath"
+        return
+    }
+    
+    Write-Host "Found $($sqlScripts.Count) SQL scripts to execute" -ForegroundColor Cyan
+    
+    foreach ($script in $sqlScripts) {
+        Write-Host "`nExecuting: $($script.Name)" -ForegroundColor Yellow
+        
+        try {
+            # Check if sqlplus is available
+            $sqlPlusPath = Get-Command sqlplus -ErrorAction SilentlyContinue
+            
+            if ($sqlPlusPath) {
+                # Execute using SQL*Plus
+                $output = & sqlplus -S $connectionString "@$($script.FullName)" 2>&1
+                
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error "Failed to execute $($script.Name): $output"
+                } else {
+                    Write-Host "✓ Successfully executed $($script.Name)" -ForegroundColor Green
+                    if ($Verbose) {
+                        Write-Host $output -ForegroundColor Gray
+                    }
+                }
+            } else {
+                Write-Warning "SQL*Plus not found. Please install Oracle Instant Client or skip Oracle provisioning."
+                Write-Host "Script would execute: $($script.FullName)" -ForegroundColor Gray
+            }
+        }
+        catch {
+            Write-Error "Error executing $($script.Name): $_"
+            throw
+        }
+    }
+    
+    Write-Host "`n✓ Oracle database provisioning completed" -ForegroundColor Green
+}
+
+# Provision MongoDB database
+function Provision-MongoDB {
+    Write-Host "`n========================================" -ForegroundColor Green
+    Write-Host "Provisioning MongoDB Database" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Green
+    
+    $mongoConnection = [Environment]::GetEnvironmentVariable("MONGO_CONNECTION_STRING")
+    $mongoDatabase = [Environment]::GetEnvironmentVariable("MONGO_DATABASE")
+    
+    if (-not $mongoConnection) {
+        Write-Warning "MongoDB connection string not configured. Skipping MongoDB provisioning."
+        return
+    }
+    
+    # Get MongoDB scripts
+    $mongoScript = Join-Path $mongoScriptsPath "create_user_preferences_collection.js"
+    
+    if (-not (Test-Path $mongoScript)) {
+        Write-Warning "MongoDB script not found: $mongoScript"
+        return
+    }
+    
+    Write-Host "Executing MongoDB script: $mongoScript" -ForegroundColor Yellow
+    
+    try {
+        # Check if mongosh (new shell) is available
+        $mongoshPath = Get-Command mongosh -ErrorAction SilentlyContinue
+        $mongoPath = Get-Command mongo -ErrorAction SilentlyContinue
+        
+        if ($mongoshPath) {
+            # Use mongosh (MongoDB Shell)
+            $output = & mongosh $mongoConnection --file $mongoScript 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Failed to execute MongoDB script: $output"
+            } else {
+                Write-Host "✓ Successfully executed MongoDB script" -ForegroundColor Green
+                Write-Host $output -ForegroundColor Gray
+            }
+        }
+        elseif ($mongoPath) {
+            # Use legacy mongo shell
+            $output = & mongo $mongoConnection --quiet $mongoScript 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Failed to execute MongoDB script: $output"
+            } else {
+                Write-Host "✓ Successfully executed MongoDB script" -ForegroundColor Green
+                Write-Host $output -ForegroundColor Gray
+            }
+        }
+        else {
+            Write-Warning "MongoDB shell (mongosh or mongo) not found. Please install MongoDB or skip MongoDB provisioning."
+            Write-Host "Script would execute: $mongoScript" -ForegroundColor Gray
+        }
+    }
+    catch {
+        Write-Error "Error executing MongoDB script: $_"
+        throw
+    }
+    
+    Write-Host "`n✓ MongoDB database provisioning completed" -ForegroundColor Green
+}
+
+# Verify Redis connection
+function Provision-Redis {
+    Write-Host "`n========================================" -ForegroundColor Green
+    Write-Host "Verifying Redis Connection" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Green
+    
+    $redisHost = [Environment]::GetEnvironmentVariable("REDIS_HOST")
+    $redisPort = [Environment]::GetEnvironmentVariable("REDIS_PORT")
+    $redisPassword = [Environment]::GetEnvironmentVariable("REDIS_PASSWORD")
+    
+    if (-not $redisHost -or -not $redisPort) {
+        Write-Warning "Redis configuration not found. Skipping Redis verification."
+        return
+    }
+    
+    Write-Host "Testing Redis connection to $redisHost:$redisPort" -ForegroundColor Cyan
+    
+    try {
+        # Check if redis-cli is available
+        $redisCliPath = Get-Command redis-cli -ErrorAction SilentlyContinue
+        
+        if ($redisCliPath) {
+            # Test connection with PING
+            if ($redisPassword) {
+                $output = & redis-cli -h $redisHost -p $redisPort -a $redisPassword PING 2>&1
+            } else {
+                $output = & redis-cli -h $redisHost -p $redisPort PING 2>&1
+            }
+            
+            if ($output -match "PONG") {
+                Write-Host "✓ Redis connection successful" -ForegroundColor Green
+                
+                # Get Redis info
+                if ($redisPassword) {
+                    $info = & redis-cli -h $redisHost -p $redisPort -a $redisPassword INFO server 2>&1
+                } else {
+                    $info = & redis-cli -h $redisHost -p $redisPort INFO server 2>&1
+                }
+                
+                if ($Verbose -and $info) {
+                    Write-Host "`nRedis Server Info:" -ForegroundColor Cyan
+                    Write-Host $info -ForegroundColor Gray
+                }
+            } else {
+                Write-Warning "Redis connection failed: $output"
+            }
+        }
+        else {
+            Write-Warning "redis-cli not found. Please install Redis or skip Redis verification."
+            Write-Host "Would test connection to: $redisHost:$redisPort" -ForegroundColor Gray
+        }
+    }
+    catch {
+        Write-Warning "Error connecting to Redis: $_"
+        Write-Host "Please ensure Redis is running and the configuration is correct." -ForegroundColor Yellow
+    }
+    
+    Write-Host "`n✓ Redis verification completed" -ForegroundColor Green
+}
+
+# Main execution
+function Main {
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "Nexus Team Database Provisioning Script" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+    
+    # Load environment variables
+    $envFile = Join-Path $scriptRoot ".env"
+    Load-EnvFile -envFilePath $envFile
+    
+    # Provision databases based on flags
+    if (-not $SkipOracle) {
+        Provision-Oracle
+    } else {
+        Write-Host "`nSkipping Oracle provisioning (use -SkipOracle:`$false to enable)" -ForegroundColor Yellow
+    }
+    
+    if (-not $SkipMongo) {
+        Provision-MongoDB
+    } else {
+        Write-Host "`nSkipping MongoDB provisioning (use -SkipMongo:`$false to enable)" -ForegroundColor Yellow
+    }
+    
+    if (-not $SkipRedis) {
+        Provision-Redis
+    } else {
+        Write-Host "`nSkipping Redis verification (use -SkipRedis:`$false to enable)" -ForegroundColor Yellow
+    }
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "Database provisioning completed!" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+}
+
+# Run main function
+Main
+

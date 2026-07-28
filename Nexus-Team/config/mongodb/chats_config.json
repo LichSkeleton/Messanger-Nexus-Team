@@ -1,0 +1,102 @@
+{
+    "collectionName": "chats",
+    "validator": {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+                "name",
+                "type",
+                "participants",
+                "createdBy",
+                "createdAt",
+                "updatedAt"
+            ],
+            "properties": {
+                "_id": {
+                    "bsonType": "string"
+                },
+                "name": {
+                    "bsonType": "string",
+                    "maxLength": 100
+                },
+                "type": {
+                    "bsonType": "string",
+                    "enum": [
+                        "private",
+                        "group",
+                        "channel"
+                    ]
+                },
+                "description": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ],
+                    "maxLength": 500
+                },
+                "avatarUrl": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ],
+                    "maxLength": 500
+                },
+                "participants": {
+                    "bsonType": "array",
+                    "items": {
+                        "bsonType": "string"
+                    }
+                },
+                "createdBy": {
+                    "bsonType": "string"
+                },
+                "createdAt": {
+                    "bsonType": "date"
+                },
+                "updatedAt": {
+                    "bsonType": "date"
+                },
+                "lastMessageAt": {
+                    "bsonType": [
+                        "date",
+                        "null"
+                    ]
+                }
+            }
+        }
+    },
+    "validationLevel": "moderate",
+    "validationAction": "error",
+    "indexes": [
+        {
+            "key": {
+                "type": 1
+            },
+            "name": "idx_chats_type"
+        },
+        {
+            "key": {
+                "createdBy": 1
+            },
+            "name": "idx_chats_created_by"
+        },
+        {
+            "key": {
+                "createdAt": 1
+            },
+            "name": "idx_chats_created_at"
+        },
+        {
+            "key": {
+                "lastMessageAt": 1
+            },
+            "name": "idx_chats_last_message_at"
+        },
+        {
+            "key": {
+                "participants": 1
+            },
+            "name": "idx_chats_participants"
+        }
+    ]
+}

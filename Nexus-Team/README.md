@@ -1,17 +1,17 @@
-# NexusTeam Messenger
+# NexusTeam
 
-Static frontend for the messenger: login, registration, and chat screens with sample conversations. Docker runs nginx and serves the files under `public/`.
+The full project documentation — quick start, demo accounts, architecture, and troubleshooting — lives in the **[root README](../README.md)**.
 
-## Run
+The **whole application (databases + .NET Web API + responsive web client) runs in Docker** — no local .NET SDK and no `dotnet run` needed. From this folder (`Nexus-Team/`):
 
-```powershell
-docker compose up --build
+```bash
+docker compose up -d --build
 ```
 
-Open http://localhost:8080.
+Then open **http://localhost:8080** in any browser (desktop or mobile). The web UI is fully responsive and is the universal client — nothing else to install.
 
-## Stop
+Stop with `docker compose down` (add `-v` to also wipe the databases).
 
-```powershell
-docker compose down
-```
+**Demo logins** (password for all: `Aa123456`): `Pavalo`, `Olen`, `Vlad` — see [Demo accounts](../README.md#demo-accounts) in the root README.
+
+> The WPF desktop client (`src/NexusTeam.Client`, Windows-only) is still available for development, but it is no longer required to use the app.

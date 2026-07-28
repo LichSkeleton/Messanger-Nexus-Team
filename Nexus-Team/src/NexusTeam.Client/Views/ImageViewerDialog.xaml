@@ -1,0 +1,190 @@
+<Window x:Class="NexusTeam.Client.Views.ImageViewerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:converters="clr-namespace:NexusTeam.Client.Converters"
+        mc:Ignorable="d"
+        Title="Image Viewer"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="Manual"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        KeyDown="Window_KeyDown">
+    
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        
+        <!-- Glass Button Style -->
+        <Style x:Key="GlassButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#25FFFFFF"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <!-- Glass Cancel Button Style -->
+        <Style x:Key="GlassCancelButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    
+    <!-- Full screen overlay with dark background -->
+    <Grid Background="#CC000000" MouseDown="Grid_MouseDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+            
+            <!-- Title Bar at top -->
+            <Border Grid.Row="0" Background="#20000000" Padding="15,10" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="20,20,20,0"
+                    MouseDown="UI_MouseDown">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding ImageName}" Foreground="White" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ImagePosition, StringFormat=' ({0})'}" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0"
+                               Visibility="{Binding ImagePosition, Converter={StaticResource NullToVisibilityConverter}}"/>
+                </StackPanel>
+            </Border>
+            
+            <!-- Image Container -->
+            <Grid Grid.Row="1" Margin="20,10,20,10" Background="Transparent" MouseDown="Grid_MouseDown">
+                <!-- Navigation buttons -->
+                <Border Background="#40000000" CornerRadius="25" Width="50" Height="50"
+                        HorizontalAlignment="Left" VerticalAlignment="Center" Margin="20,0,0,0"
+                        Visibility="{Binding HasPrevious, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Cursor="Hand" ToolTip="Previous image (←)"
+                        Panel.ZIndex="10">
+                    <Button Content="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="White"
+                            Background="Transparent" BorderThickness="0" Width="50" Height="50"
+                            Command="{Binding NavigatePreviousCommand}"
+                            Cursor="Hand"/>
+                </Border>
+
+                <Border Background="#40000000" CornerRadius="25" Width="50" Height="50"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,20,0"
+                        Visibility="{Binding HasNext, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Cursor="Hand" ToolTip="Next image (→)"
+                        Panel.ZIndex="10">
+                    <Button Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="White"
+                            Background="Transparent" BorderThickness="0" Width="50" Height="50"
+                            Command="{Binding NavigateNextCommand}"
+                            Cursor="Hand"/>
+                </Border>
+
+                <!-- Image position indicator -->
+                <Border Background="#40000000" CornerRadius="10" Padding="10,5"
+                        HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,20,0,0"
+                        Visibility="{Binding ImagePosition, Converter={StaticResource NullToVisibilityConverter}}"
+                        Panel.ZIndex="5">
+                    <TextBlock Text="{Binding ImagePosition}" Foreground="White" FontSize="14" FontWeight="SemiBold"/>
+                </Border>
+
+                <ScrollViewer x:Name="ImageScrollViewer" 
+                              HorizontalScrollBarVisibility="Hidden" 
+                              VerticalScrollBarVisibility="Hidden"
+                              PanningMode="Both"
+                              VerticalAlignment="Stretch"
+                              HorizontalAlignment="Stretch"
+                              Background="Transparent"
+                              MouseDown="Grid_MouseDown"
+                              Focusable="False">
+                    <Grid x:Name="ImageContainer" 
+                          HorizontalAlignment="Center" 
+                          VerticalAlignment="Center"
+                          Background="Transparent"
+                          MouseDown="Grid_MouseDown">
+                        <!-- Loading indicator -->
+                        <TextBlock Text="Loading image..." Foreground="#CCCCCC" FontSize="14" 
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <!-- Actual Image with Transform for zoom -->
+                        <Image x:Name="ImageView" 
+                               Source="{Binding ImageSource}" 
+                               Stretch="Uniform"
+                               Visibility="{Binding HasImage, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               MouseWheel="Image_MouseWheel"
+                               MouseDown="Image_MouseDown"
+                               RenderTransformOrigin="0.5,0.5">
+                            <Image.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="💾" FontFamily="Segoe UI Emoji"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <Separator/>
+                                    <MenuItem Header="Download" Command="{Binding DownloadCommand}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="⬇" FontFamily="Segoe UI Emoji"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </Image.ContextMenu>
+                            <Image.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="ImageScaleTransform"/>
+                                </TransformGroup>
+                            </Image.RenderTransform>
+                        </Image>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+            
+            <!-- Footer with actions -->
+            <Border Grid.Row="2" Background="#20000000" Padding="15,10" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="20,0,20,20"
+                    MouseDown="UI_MouseDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBlock Grid.Column="0" Text="{Binding ImageSize}" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center"/>
+                    
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Zoom -" Click="ZoomOut_Click" 
+                                Style="{StaticResource GlassButtonStyle}" Margin="0,0,5,0" Width="70" ToolTip="Zoom Out"/>
+                        <Button Content="100%" Click="ResetZoom_Click" 
+                                Style="{StaticResource GlassButtonStyle}" Margin="0,0,5,0" Width="70" ToolTip="Reset Zoom"/>
+                        <Button Content="Zoom +" Click="ZoomIn_Click" 
+                                Style="{StaticResource GlassButtonStyle}" Margin="0,0,10,0" Width="70" ToolTip="Zoom In"/>
+                        <Button Content="Download" Command="{Binding DownloadCommand}" 
+                                Style="{StaticResource GlassButtonStyle}" Width="100"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+    </Grid>
+</Window>
+

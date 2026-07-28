@@ -1,0 +1,2322 @@
+<UserControl x:Class="NexusTeam.Client.Views.ChatView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:converters="clr-namespace:NexusTeam.Client.Converters"
+             xmlns:selectors="clr-namespace:NexusTeam.Client.Selectors"
+             xmlns:viewModels="clr-namespace:NexusTeam.Client.ViewModels"
+             xmlns:views="clr-namespace:NexusTeam.Client.Views"
+             xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
+             xmlns:helpers="clr-namespace:NexusTeam.Client.Helpers"
+             xmlns:enums="clr-namespace:NexusTeam.Shared.Enums;assembly=NexusTeam.Shared">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToBooleanConverter x:Key="NullToBooleanConverter"/>
+        <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
+        <converters:BooleanToOpacityConverter x:Key="BooleanToOpacityConverter"/>
+        <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+        <converters:UserStatusToBrushConverter x:Key="UserStatusToBrushConverter"/>
+        <converters:UserStatusToTextConverter x:Key="UserStatusToTextConverter"/>
+
+        <!-- Style for selectable message text (clean RichTextBox) -->
+        <Style x:Key="SelectableMessageTextStyle" TargetType="emoji:RichTextBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="IsDocumentEnabled" Value="True"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Cursor" Value="IBeam"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <!-- Remove default min width/height constraints -->
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            
+            <!-- CRITICAL: Retemplate to remove all chrome -->
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RichTextBox">
+                        <!-- Use simple Grid/ScrollViewer, no borders -->
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost" 
+                                          Focusable="False"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          Padding="0"
+                                          Margin="0"
+                                          BorderThickness="0"
+                                          Background="Transparent"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button" x:Key="RoundNavButtonStyle">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Margin" Value="0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="#33354E"/> <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                CornerRadius="20"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#000000" Direction="315" ShadowDepth="2" BlurRadius="4" Opacity="0.3"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#4E517A"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#2A2C40"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button" x:Key="GlassActionButtonStyle">
+             <Setter Property="Background" Value="#25FFFFFF"/>
+             <Setter Property="Foreground" Value="White"/>
+             <Setter Property="BorderThickness" Value="0"/>
+             <Setter Property="Width" Value="30"/>
+             <Setter Property="Height" Value="30"/>
+             <Setter Property="Cursor" Value="Hand"/>
+             <Setter Property="Template">
+                 <Setter.Value>
+                     <ControlTemplate TargetType="Button">
+                         <Border Background="{TemplateBinding Background}" CornerRadius="15">
+                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                         </Border>
+                         <ControlTemplate.Triggers>
+                             <Trigger Property="IsMouseOver" Value="True">
+                                 <Setter Property="Background" Value="#40FFFFFF"/>
+                             </Trigger>
+                         </ControlTemplate.Triggers>
+                     </ControlTemplate>
+                 </Setter.Value>
+             </Setter>
+        </Style>
+
+        <Style x:Key="CircularIconButtonStyle" TargetType="Button">
+             <Setter Property="Background" Value="Transparent"/>
+             <Setter Property="BorderBrush" Value="Transparent"/>
+             <Setter Property="BorderThickness" Value="0"/>
+             <Setter Property="Width" Value="30"/>
+             <Setter Property="Height" Value="30"/>
+             <Setter Property="Padding" Value="0"/>
+             <Setter Property="Cursor" Value="Hand"/>
+             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+             <Setter Property="Template">
+                 <Setter.Value>
+                     <ControlTemplate TargetType="Button">
+                         <Border Background="{TemplateBinding Background}" CornerRadius="15">
+                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                         </Border>
+                     </ControlTemplate>
+                 </Setter.Value>
+             </Setter>
+        </Style>
+
+        <Style x:Key="TransparentButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" 
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.3"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Border x:Name="Bd" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#25FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#35FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GlassPanelBorderStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="#000000" Opacity="0.05"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#60FFFFFF" Offset="0.0"/>
+                        <GradientStop Color="#00FFFFFF" Offset="0.5"/>
+                        <GradientStop Color="#20FFFFFF" Offset="1.0"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Custom ScrollBar Style for Main Chat - Thicker version of EmojiPicker style -->
+        <Style x:Key="ChatScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="MinWidth" Value="8"/>
+            <Setter Property="MaxWidth" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid>
+                            <!-- Track - Subtle background -->
+                            <Border x:Name="Track" 
+                                    Background="#1A1A2E" 
+                                    CornerRadius="4"
+                                    Opacity="0.4"
+                                    Margin="0,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Width" Value="8"/>
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource TemplatedParent}}" Value="Horizontal">
+                                                <Setter Property="Width" Value="Auto"/>
+                                                <Setter Property="Height" Value="8"/>
+                                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                                <Setter Property="VerticalAlignment" Value="Bottom"/>
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Track x:Name="PART_Track" 
+                                   IsDirectionReversed="True"
+                                   Focusable="False">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBorder"
+                                                        Background="#8A8AAA"
+                                                        CornerRadius="4"
+                                                        Opacity="1"
+                                                        Margin="0,0"
+                                                        UseLayoutRounding="True"
+                                                        SnapsToDevicePixels="True">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#AAAAAA"/>
+                                                                    <Setter Property="Opacity" Value="1"/>
+                                                                </Trigger>
+                                                                <DataTrigger Binding="{Binding IsDragging, RelativeSource={RelativeSource AncestorType=Thumb}}" Value="True">
+                                                                    <Setter Property="Background" Value="#BABABA"/>
+                                                                    <Setter Property="Opacity" Value="1"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="Horizontal">
+                                                                    <Setter Property="Background" Value="#9A9ABA"/>
+                                                                    <Setter Property="Height" Value="8"/>
+                                                                    <Setter Property="MinHeight" Value="8"/>
+                                                                    <Setter Property="MaxHeight" Value="8"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="8"/>
+                    <Setter Property="MinHeight" Value="8"/>
+                    <Setter Property="MaxHeight" Value="8"/>
+                    <Setter Property="Width" Value="Auto"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ScrollViewer Style that applies the custom ScrollBar style -->
+        <Style x:Key="ChatScrollViewerStyle" TargetType="ScrollViewer">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid x:Name="Grid" Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            
+                            <Rectangle x:Name="Corner" Grid.Column="1" Fill="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Grid.Row="1"/>
+                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" 
+                                                    CanContentScroll="{TemplateBinding CanContentScroll}" 
+                                                    CanHorizontallyScroll="False" 
+                                                    CanVerticallyScroll="False" 
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}" 
+                                                    Content="{TemplateBinding Content}" 
+                                                    Grid.Column="0" 
+                                                    Margin="{TemplateBinding Padding}" 
+                                                    Grid.Row="0"/>
+                            <ScrollBar x:Name="PART_VerticalScrollBar" 
+                                       AutomationProperties.AutomationId="VerticalScrollBar" 
+                                       Cursor="Arrow" 
+                                       Grid.Column="1" 
+                                       Maximum="{TemplateBinding ScrollableHeight}" 
+                                       Minimum="0" 
+                                       Orientation="Vertical" 
+                                       Grid.Row="0" 
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" 
+                                       Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" 
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Style="{StaticResource ChatScrollBarStyle}"/>
+                            <ScrollBar x:Name="PART_HorizontalScrollBar" 
+                                       AutomationProperties.AutomationId="HorizontalScrollBar" 
+                                       Cursor="Arrow" 
+                                       Grid.Column="0" 
+                                       Maximum="{TemplateBinding ScrollableWidth}" 
+                                       Minimum="0" 
+                                       Orientation="Horizontal" 
+                                       Grid.Row="1" 
+                                       Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" 
+                                       Value="{Binding HorizontalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" 
+                                       ViewportSize="{TemplateBinding ViewportWidth}"
+                                       Style="{StaticResource ChatScrollBarStyle}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Template Selector for Message Items -->
+        <selectors:MessageItemTemplateSelector x:Key="MessageItemTemplateSelector">
+            <selectors:MessageItemTemplateSelector.MessageTemplate>
+                <DataTemplate DataType="{x:Type viewModels:MessageViewModel}">
+                    <Border Margin="0,0,0,10" MaxWidth="500" HorizontalAlignment="{Binding IsCurrentUser, Converter={StaticResource BooleanToAlignmentConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Avatar for other users' messages -->
+                            <StackPanel VerticalAlignment="Top" Margin="0,0,8,0"
+                                        Visibility="{Binding IsCurrentUser, Converter={StaticResource InverseBooleanConverter}}">
+                                <Grid Width="30" Height="30" Cursor="Hand">
+                                    <Grid.InputBindings>
+                                        <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.OpenUserProfileFromMessageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                    </Grid.InputBindings>
+                                    <!-- Background circle -->
+                                    <Ellipse Fill="#33354E"/>
+                                    <!-- Avatar Image -->
+                                    <Ellipse>
+                                        <Ellipse.Fill>
+                                            <ImageBrush ImageSource="{Binding SenderAvatarImage}" Stretch="UniformToFill"/>
+                                        </Ellipse.Fill>
+                                    </Ellipse>
+                                    <!-- Fallback: First character if no avatar -->
+                                    <TextBlock Text="{Binding SenderName, Converter={StaticResource FirstCharacterConverter}}" 
+                                               Foreground="White" 
+                                               VerticalAlignment="Center" 
+                                               HorizontalAlignment="Center" 
+                                               FontWeight="Bold"
+                                               Visibility="{Binding SenderAvatarImage, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                </Grid>
+                                <!-- Sender name below avatar in group chats (readable on small screens) -->
+                                <TextBlock Text="{Binding SenderName}"
+                                           Foreground="#CCCCCC"
+                                           FontSize="9"
+                                           FontWeight="SemiBold"
+                                           MaxWidth="48"
+                                           TextWrapping="Wrap"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,2,0,0"
+                                           Visibility="{Binding ShouldShowSenderName, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                           Cursor="Hand">
+                                    <TextBlock.InputBindings>
+                                        <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.OpenUserProfileFromMessageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                    </TextBlock.InputBindings>
+                                </TextBlock>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <Border CornerRadius="12" Padding="12" MouseRightButtonUp="MessageBorder_MouseRightButtonUp" Cursor="Hand">
+                                    <Border.Tag>
+                                        <Binding/>
+                                    </Border.Tag>
+                                    <Border.ContextMenu>
+                                        <ContextMenu Background="#2A2C40" 
+                                                     BorderBrush="#40FFFFFF" 
+                                                     BorderThickness="1"
+                                                     Padding="4"
+                                                     Opened="MessageContextMenu_Opened">
+                                            <ContextMenu.Style>
+                                                <Style TargetType="ContextMenu">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ContextMenu">
+                                                                <Border Background="{TemplateBinding Background}"
+                                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                                        CornerRadius="8"
+                                                                        Padding="4">
+                                                                    <ItemsPresenter Margin="0" HorizontalAlignment="Stretch"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ContextMenu.Style>
+                                            <ContextMenu.Resources>
+                                                <Style TargetType="MenuItem">
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                    <Setter Property="Foreground" Value="White"/>
+                                                    <Setter Property="Padding" Value="10,6"/>
+                                                    <Setter Property="FontSize" Value="12"/>
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="MenuItem">
+                                                                <Border Background="{TemplateBinding Background}" 
+                                                                        Padding="{TemplateBinding Padding}"
+                                                                        CornerRadius="6"
+                                                                        Margin="2">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <ContentPresenter Grid.Column="0" 
+                                                                                          Content="{TemplateBinding Icon}" 
+                                                                                          Margin="0,0,8,0"
+                                                                                          VerticalAlignment="Center"/>
+                                                                        <ContentPresenter Grid.Column="1" 
+                                                                                          Content="{TemplateBinding Header}" 
+                                                                                          VerticalAlignment="Center"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#3A3C50"/>
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsPressed" Value="True">
+                                                                        <Setter Property="Background" Value="#4A4C60"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                                <Style TargetType="Separator">
+                                                    <Setter Property="Background" Value="#40FFFFFF"/>
+                                                    <Setter Property="Height" Value="1"/>
+                                                    <Setter Property="Margin" Value="-4,4,-4,4"/>
+                                                    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                                </Style>
+                                            </ContextMenu.Resources>
+                                            <MenuItem Header="Add Reaction" 
+                                                      Click="AddReactionMenuItem_Click">
+                                                <MenuItem.Tag>
+                                                    <Binding/>
+                                                </MenuItem.Tag>
+                                                <MenuItem.Style>
+                                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                        <Setter Property="Background" Value="#3A3C50"/>
+                                                        <Setter Property="Margin" Value="2,2,2,4"/>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#4A4C60"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </MenuItem.Style>
+                                                <MenuItem.Icon>
+                                                    <Border Background="#50FFFFFF" 
+                                                            CornerRadius="3" 
+                                                            Width="16" 
+                                                            Height="16"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="😀" 
+                                                                   FontSize="10" 
+                                                                   Foreground="White"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="Copy" 
+                                                      Click="CopyMessageMenuItem_Click">
+                                                <MenuItem.Tag>
+                                                    <Binding/>
+                                                </MenuItem.Tag>
+                                                <MenuItem.Icon>
+                                                    <Border Background="#40FFFFFF" 
+                                                            CornerRadius="3" 
+                                                            Width="16" 
+                                                            Height="16"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="&#xE8C8;" 
+                                                                   FontFamily="Segoe MDL2 Assets" 
+                                                                   FontSize="10" 
+                                                                   Foreground="White"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Save As" 
+                                                      Click="SaveAsMenuItem_Click"
+                                                      Visibility="{Binding HasImageAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Tag>
+                                                    <Binding/>
+                                                </MenuItem.Tag>
+                                                <MenuItem.Icon>
+                                                    <Border Background="#40FFFFFF" 
+                                                            CornerRadius="3" 
+                                                            Width="16" 
+                                                            Height="16"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="💾" 
+                                                                   FontFamily="Segoe UI Emoji"
+                                                                   FontSize="10" 
+                                                                   Foreground="White"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Edit" 
+                                                      Click="EditMessageMenuItem_Click"
+                                                      Visibility="{Binding IsCurrentUser, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Tag>
+                                                    <Binding/>
+                                                </MenuItem.Tag>
+                                                <MenuItem.Icon>
+                                                    <Border Background="#40FFFFFF" 
+                                                            CornerRadius="3" 
+                                                            Width="16" 
+                                                            Height="16"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="&#xE70F;" 
+                                                                   FontFamily="Segoe MDL2 Assets" 
+                                                                   FontSize="10" 
+                                                                   Foreground="White"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Translate"
+                                                      Click="TranslateMenuItem_Click">
+                                                <MenuItem.Tag>
+                                                    <Binding/>
+                                                </MenuItem.Tag>
+                                                <MenuItem.Icon>
+                                                    <Border Background="#40FFFFFF" 
+                                                            CornerRadius="3" 
+                                                            Width="16" 
+                                                            Height="16"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="🌐" 
+                                                                   FontFamily="Segoe UI Emoji"
+                                                                   FontSize="10" 
+                                                                   Foreground="White"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Delete" 
+                                                      Click="DeleteMessageMenuItem_Click"
+                                                      Visibility="{Binding IsCurrentUser, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Tag>
+                                                    <Binding/>
+                                                </MenuItem.Tag>
+                                                <MenuItem.Icon>
+                                                    <Border Background="#40FF6666" 
+                                                            CornerRadius="3" 
+                                                            Width="16" 
+                                                            Height="16"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="&#xE74D;" 
+                                                                   FontFamily="Segoe MDL2 Assets" 
+                                                                   FontSize="10" 
+                                                                   Foreground="#FFFF6666"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCurrentUser}" Value="True">
+                                                    <Setter Property="Background" Value="#25FFFFFF"/> 
+                                                    <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+                                                    <Setter Property="BorderThickness" Value="1"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsCurrentUser}" Value="False">
+                                                    <Setter Property="Background" Value="#40000000"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <!-- Hack: Use Grid with hidden TextBlock to force RichTextBox width to match content -->
+                                        <Grid Visibility="{Binding HasContent, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <!-- Hidden TextBlock that determines the size -->
+                                            <emoji:TextBlock x:Name="SizingTextBlock" 
+                                                             Text="{Binding Content}" 
+                                                             TextWrapping="Wrap" 
+                                                             Visibility="Hidden"
+                                                             Margin="0"
+                                                             Padding="5,0"/>
+                                            
+                                            <!-- RichTextBox bound to the TextBlock's width and font properties -->
+                                            <emoji:RichTextBox Style="{StaticResource SelectableMessageTextStyle}"
+                                                               helpers:RichTextBoxHelper.DocumentText="{Binding Content}"
+                                                               Width="{Binding ElementName=SizingTextBlock, Path=ActualWidth}"
+                                                               FontFamily="{Binding ElementName=SizingTextBlock, Path=FontFamily}"
+                                                               FontSize="{Binding ElementName=SizingTextBlock, Path=FontSize}"
+                                                               FontWeight="{Binding ElementName=SizingTextBlock, Path=FontWeight}"
+                                                               FontStyle="{Binding ElementName=SizingTextBlock, Path=FontStyle}"
+                                                               FontStretch="{Binding ElementName=SizingTextBlock, Path=FontStretch}"
+                                                               Opacity="{Binding IsDeleted, Converter={StaticResource BooleanToOpacityConverter}}"/>
+                                        </Grid>
+                                        
+                                        <!-- Attachments Section -->
+                                        <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,8,0,0" Visibility="{Binding HasAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,5" Background="#20FFFFFF" CornerRadius="8" Padding="8" HorizontalAlignment="Left" MaxWidth="300">
+                                                        <Grid>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto"/>
+                                                                <RowDefinition Height="Auto"/>
+                                                            </Grid.RowDefinitions>
+                                                            
+                                                            <!-- Image Preview (for images) - Click to view -->
+                                                            <Button Grid.Row="0" 
+                                                                    Command="{Binding DataContext.ViewImageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                    CommandParameter="{Binding}" 
+                                                                    Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                                                    Visibility="{Binding IsImage, Converter={StaticResource BooleanToVisibilityConverter}}" 
+                                                                    Margin="0,0,0,5">
+                                                                <Border CornerRadius="8" MaxHeight="200" Background="#252545">
+                                                                    <Grid>
+                                                                        <!-- Actual Image -->
+                                                                        <Image Source="{Binding ThumbnailImage}" Stretch="Uniform" MaxHeight="200" Visibility="{Binding HasThumbnail, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                                        
+                                                                        <!-- Loading placeholder -->
+                                                                        <TextBlock Text="Loading..." Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20" Visibility="{Binding HasThumbnail, Converter={StaticResource InverseBooleanConverter}}"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </Button>
+                                                            
+                                                            <!-- File Info (always shown) -->
+                                                            <Grid Grid.Row="1">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                
+                                                                <!-- Play/Pause Button for Audio -->
+                                                                <Button Grid.Column="0" 
+                                                                        Command="{Binding DataContext.PlayPauseAudioCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                        CommandParameter="{Binding}" 
+                                                                        Width="36" Height="36" Margin="0,0,8,0"
+                                                                        Visibility="{Binding IsAudio, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                        ToolTip="Play/Pause">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button" BasedOn="{StaticResource CircularIconButtonStyle}">
+                                                                            <Setter Property="Background" Value="#33354E"/>
+                                                                            <Setter Property="Width" Value="36"/>
+                                                                            <Setter Property="Height" Value="36"/>
+                                                                            <Setter Property="Template">
+                                                                                <Setter.Value>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="18" Width="36" Height="36">
+                                                                                            <Border.Effect>
+                                                                                                <DropShadowEffect Color="#000000" Direction="315" ShadowDepth="2" BlurRadius="4" Opacity="0.2"/>
+                                                                                            </Border.Effect>
+                                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                        </Border>
+                                                                                    </ControlTemplate>
+                                                                                </Setter.Value>
+                                                                            </Setter>
+                                                                            <Style.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter Property="Background" Value="#4E517A"/>
+                                                                                </Trigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Text" Value="&#xE768;"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                                                        <Setter Property="Text" Value="&#xE769;"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                </Button>
+                                                                
+                                                                <Border Grid.Column="1" Background="#33354E" CornerRadius="8" Width="40" Height="40" Margin="0,0,10,0">
+                                                                    <TextBlock Text="{Binding Icon}" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                                </Border>
+                                                                
+                                                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding FileName}" Foreground="White" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                                    <TextBlock Text="{Binding FileSizeFormatted}" Foreground="#CCCCCC" FontSize="10"/>
+                                                                </StackPanel>
+                                                                
+                                                                <!-- Download Button (hidden for images, available in context menu) -->
+                                                                <Button Grid.Column="3" 
+                                                                        Command="{Binding DataContext.DownloadAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                        CommandParameter="{Binding}" 
+                                                                        Background="Transparent" BorderThickness="0" 
+                                                                        Width="30" Height="30" Margin="5,0,0,0" Cursor="Hand"
+                                                                        Visibility="{Binding IsImage, Converter={StaticResource InverseBooleanConverter}}"
+                                                                        ToolTip="Download">
+                                                                    <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                                </Button>
+                                                                
+                                                                <!-- Preview Code Button -->
+                                                                <Button Grid.Column="4" 
+                                                                        Command="{Binding DataContext.PreviewCodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                        CommandParameter="{Binding}" 
+                                                                        Background="Transparent" BorderThickness="0" 
+                                                                        Width="30" Height="30" Margin="5,0,0,0" Cursor="Hand"
+                                                                        Visibility="{Binding IsCodeFile, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                        ToolTip="Preview Code">
+                                                                    <TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{DynamicResource CodePreviewBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                                </Button>
+                                                                
+                                                                <!-- Open/View Button for non-images and non-audio -->
+                                                                <Button Grid.Column="5" 
+                                                                        Command="{Binding DataContext.OpenAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                        CommandParameter="{Binding}" 
+                                                                        Background="Transparent" BorderThickness="0" 
+                                                                        Width="30" Height="30" Margin="5,0,0,0" Cursor="Hand"
+                                                                        ToolTip="Open">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <MultiDataTrigger>
+                                                                                    <MultiDataTrigger.Conditions>
+                                                                                        <Condition Binding="{Binding IsImage}" Value="False"/>
+                                                                                        <Condition Binding="{Binding IsAudio}" Value="False"/>
+                                                                                    </MultiDataTrigger.Conditions>
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </MultiDataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                    <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                                </Button>
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                            <TextBlock Text="Edited" Foreground="#90FFFFFF" FontSize="10" Margin="0,0,5,0" FontStyle="Italic" Visibility="{Binding IsEdited, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                            <TextBlock Text="{Binding CreatedAt, StringFormat='{}{0:HH:mm}'}" Foreground="#90FFFFFF" FontSize="10"/>
+                                        </StackPanel>
+                                        
+                                        <!-- Reactions Panel (Left Bottom) -->
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,4,0,0" Visibility="{Binding HasReactions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <ItemsControl ItemsSource="{Binding ReactionsList}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Command="{Binding DataContext.ToggleReactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                Tag="{Binding Key}"
+                                                                Background="Transparent" 
+                                                                BorderThickness="0" 
+                                                                Padding="6,3" 
+                                                                Margin="0,0,4,0" 
+                                                                Cursor="Hand"
+                                                                ToolTip="{Binding Value.Count, StringFormat='{}{0} reactions'}"
+                                                                Click="ReactionButton_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border Background="#30FFFFFF" 
+                                                                            CornerRadius="12" 
+                                                                            Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <emoji:TextBlock Text="{Binding Key}" FontSize="14" Margin="0,0,4,0"/>
+                                                                <TextBlock Text="{Binding Value.Count}" Foreground="#CCCCCC" FontSize="11"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border MouseRightButtonUp="MessageBorder_MouseRightButtonUp" Cursor="Hand">
+                                    <Border.Tag>
+                                        <Binding/>
+                                    </Border.Tag>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </selectors:MessageItemTemplateSelector.MessageTemplate>
+            
+            <selectors:MessageItemTemplateSelector.DateSeparatorTemplate>
+                <DataTemplate DataType="{x:Type viewModels:DateSeparatorViewModel}">
+                    <Border Margin="0,15,0,15" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Height="1" Background="#30FFFFFF" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Grid.Column="1" 
+                                       Text="{Binding DisplayText}" 
+                                       Foreground="#90FFFFFF" 
+                                       FontSize="11" 
+                                       FontWeight="SemiBold"
+                                       Padding="8,4"/>
+                            <Border Grid.Column="2" Height="1" Background="#30FFFFFF" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </selectors:MessageItemTemplateSelector.DateSeparatorTemplate>
+        </selectors:MessageItemTemplateSelector>
+
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.Background>
+            <ImageBrush ImageSource="{DynamicResource AppBackgroundImageSource}" Stretch="UniformToFill"/>
+        </Grid.Background>
+        
+        <Border Background="#99000000"/>
+
+        <!-- Hidden MediaElement for audio playback -->
+        <MediaElement x:Name="AudioPlayer" 
+                      LoadedBehavior="Manual" 
+                      UnloadedBehavior="Stop"
+                      Visibility="Collapsed"
+                      MediaOpened="AudioPlayer_MediaOpened"
+                      MediaEnded="AudioPlayer_MediaEnded"
+                      MediaFailed="AudioPlayer_MediaFailed"/>
+
+        <Grid x:Name="MainContentGrid" SizeChanged="MainContentGrid_SizeChanged">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="FolderRailColumn" Width="80" MinWidth="64"/>
+                <ColumnDefinition x:Name="ChatListColumn" Width="280" MinWidth="160" MaxWidth="480"/>
+                <ColumnDefinition x:Name="MessagesColumn" Width="*" MinWidth="240"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0" Margin="10" Background="Transparent">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>    <RowDefinition Height="Auto"/> </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <Border CornerRadius="18" Background="#18FFFFFF"/>
+                    <Border Style="{StaticResource GlassPanelBorderStyle}"/>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Margin="10">
+                        <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                            <!-- Folders as circular buttons -->
+                            <ItemsControl ItemsSource="{Binding Folders}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Vertical" Margin="0,4" HorizontalAlignment="Center">
+                                            <Button x:Name="FolderButton"
+                                                    Command="{Binding DataContext.SelectFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Width="40"
+                                                    Height="40"
+                                                    ToolTip="{Binding Name}"
+                                                    Tag="{Binding}">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource RoundNavButtonStyle}">
+                                                        <Setter Property="Width" Value="40"/>
+                                                        <Setter Property="Height" Value="40"/>
+                                                        <Setter Property="Background" Value="#4E5165"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Background" Value="#5B4B6F"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                
+                                                <Grid>
+                                                    <!-- Icon -->
+                                                    <TextBlock FontFamily="Segoe MDL2 Assets" 
+                                                               FontSize="18" 
+                                                               Foreground="White"
+                                                               VerticalAlignment="Center"
+                                                               HorizontalAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsAllChatsFolder}" Value="True">
+                                                                        <Setter Property="Text" Value="&#xE8F2;"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsAllChatsFolder}" Value="False">
+                                                                        <Setter Property="Text" Value="&#xE8B7;"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    
+                                                    <!-- Unread Count Badge -->
+                                                    <Border Background="#FF0078D7" 
+                                                            CornerRadius="6" 
+                                                            Height="12" 
+                                                            MinWidth="12" 
+                                                            Padding="2,0" 
+                                                            VerticalAlignment="Top" 
+                                                            HorizontalAlignment="Right"
+                                                            Margin="0,-2,-2,0"
+                                                            Visibility="{Binding UnreadCount, Converter={StaticResource CountToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding UnreadCount}" 
+                                                                   Foreground="White" 
+                                                                   FontSize="7" 
+                                                                   FontWeight="Bold" 
+                                                                   HorizontalAlignment="Center" 
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </Grid>
+                                                
+                                                <Button.ContextMenu>
+                                                    <ContextMenu Background="#2A2C40" 
+                                                                 BorderBrush="#40FFFFFF" 
+                                                                 BorderThickness="1"
+                                                                 Padding="4">
+                                                        <ContextMenu.Style>
+                                                            <Style TargetType="ContextMenu">
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="ContextMenu">
+                                                                            <Border Background="{TemplateBinding Background}"
+                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                    CornerRadius="8"
+                                                                                    Padding="{TemplateBinding Padding}">
+                                                                                <ItemsPresenter/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                            </Style>
+                                                        </ContextMenu.Style>
+                                                        <ContextMenu.Resources>
+                                                            <Style TargetType="MenuItem">
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                                <Setter Property="Padding" Value="10,6"/>
+                                                                <Setter Property="FontSize" Value="12"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="MenuItem">
+                                                                            <Border Background="{TemplateBinding Background}" 
+                                                                                    Padding="{TemplateBinding Padding}"
+                                                                                    CornerRadius="6"
+                                                                                    Margin="2">
+                                                                                <Grid>
+                                                                                    <Grid.ColumnDefinitions>
+                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                        <ColumnDefinition Width="*"/>
+                                                                                    </Grid.ColumnDefinitions>
+                                                                                    <ContentPresenter Grid.Column="0" 
+                                                                                                      Content="{TemplateBinding Icon}" 
+                                                                                                      Margin="0,0,8,0"
+                                                                                                      VerticalAlignment="Center"/>
+                                                                                    <ContentPresenter Grid.Column="1" 
+                                                                                                      Content="{TemplateBinding Header}" 
+                                                                                                      VerticalAlignment="Center"/>
+                                                                                </Grid>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter Property="Background" Value="#3A3C50"/>
+                                                                                </Trigger>
+                                                                                <Trigger Property="IsPressed" Value="True">
+                                                                                    <Setter Property="Background" Value="#4A4C60"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                            </Style>
+                                                        </ContextMenu.Resources>
+                                                        <MenuItem Header="Edit Folder" 
+                                                                  Click="EditFolderMenuItem_Click"
+                                                                  Visibility="{Binding IsAllChatsFolder, Converter={StaticResource InverseBooleanConverter}}">
+                                                            <MenuItem.Tag>
+                                                                <Binding Path="PlacementTarget.Tag" RelativeSource="{RelativeSource AncestorType=ContextMenu}"/>
+                                                            </MenuItem.Tag>
+                                                            <MenuItem.Icon>
+                                                                <Border Background="#40FFFFFF" 
+                                                                        CornerRadius="3" 
+                                                                        Width="16" 
+                                                                        Height="16"
+                                                                        VerticalAlignment="Center">
+                                                                    <TextBlock Text="&#xE70F;" 
+                                                                               FontFamily="Segoe MDL2 Assets" 
+                                                                               FontSize="10" 
+                                                                               Foreground="White"
+                                                                               HorizontalAlignment="Center"
+                                                                               VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <Separator Visibility="{Binding IsAllChatsFolder, Converter={StaticResource InverseBooleanConverter}}"/>
+                                                        <MenuItem Header="Delete Folder" 
+                                                                  Click="DeleteFolderMenuItem_Click"
+                                                                  Visibility="{Binding IsAllChatsFolder, Converter={StaticResource InverseBooleanConverter}}">
+                                                            <MenuItem.Tag>
+                                                                <Binding Path="PlacementTarget.Tag" RelativeSource="{RelativeSource AncestorType=ContextMenu}"/>
+                                                            </MenuItem.Tag>
+                                                            <MenuItem.Icon>
+                                                                <Border Background="#40FF6666" 
+                                                                        CornerRadius="3" 
+                                                                        Width="16" 
+                                                                        Height="16"
+                                                                        VerticalAlignment="Center">
+                                                                    <TextBlock Text="&#xE74D;" 
+                                                                               FontFamily="Segoe MDL2 Assets" 
+                                                                               FontSize="10" 
+                                                                               Foreground="#FFFF6666"
+                                                                               HorizontalAlignment="Center"
+                                                                               VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                    </ContextMenu>
+                                                </Button.ContextMenu>
+                                            </Button>
+                                            
+                                            <!-- Folder Name -->
+                                            <TextBlock Text="{Binding Name}" 
+                                                       Foreground="#CCFFFFFF" 
+                                                       FontSize="9" 
+                                                       HorizontalAlignment="Center"
+                                                       Margin="0,0,0,0"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="50">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            
+                            <!-- Add Folder Button (Plus) -->
+                            <StackPanel Orientation="Vertical" Margin="0,4,0,0" HorizontalAlignment="Center">
+                                <Grid Width="44" Height="44">
+                                    <Button Command="{Binding CreateFolderCommand}"
+                                            Width="40"
+                                            Height="40"
+                                            ToolTip="Create personal folder"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource RoundNavButtonStyle}">
+                                                <Setter Property="Width" Value="40"/>
+                                                <Setter Property="Height" Value="40"/>
+                                                <Setter Property="Background" Value="#4E5165"/>
+                                            </Style>
+                                        </Button.Style>
+                                        <TextBlock Text="&#xE710;" 
+                                                   FontFamily="Segoe MDL2 Assets" 
+                                                   FontSize="18" 
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center"/>
+                                    </Button>
+                                    <!-- Own status behind/on the + button (always visible on small screens) -->
+                                    <Border x:Name="OwnStatusBadge"
+                                            Width="20" Height="20"
+                                            CornerRadius="10"
+                                            Background="#2A2C40"
+                                            BorderBrush="#FFFFFF"
+                                            BorderThickness="2"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Bottom"
+                                            Margin="0,0,-3,-3"
+                                            Cursor="Hand"
+                                            Panel.ZIndex="20"
+                                            ToolTip="{Binding StatusLabel}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Effect">
+                                                    <Setter.Value>
+                                                        <DropShadowEffect BlurRadius="8" Opacity="0.9" ShadowDepth="0" Color="#22C55E"/>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MyStatus}" Value="Invisible">
+                                                        <Setter Property="Effect">
+                                                            <Setter.Value>
+                                                                <DropShadowEffect BlurRadius="6" Opacity="0.7" ShadowDepth="0" Color="#808080"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding MyStatus}" Value="Offline">
+                                                        <Setter Property="Effect">
+                                                            <Setter.Value>
+                                                                <DropShadowEffect BlurRadius="6" Opacity="0.7" ShadowDepth="0" Color="#808080"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Border.InputBindings>
+                                            <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleStatusDropdownCommand}"/>
+                                        </Border.InputBindings>
+                                        <Ellipse Width="12" Height="12"
+                                                 Fill="{Binding MyStatus, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Popup IsOpen="{Binding IsStatusDropdownOpen, Mode=TwoWay}"
+                                           PlacementTarget="{Binding ElementName=OwnStatusBadge}"
+                                           Placement="Right"
+                                           StaysOpen="False"
+                                           AllowsTransparency="True"
+                                           HorizontalOffset="8"
+                                           VerticalOffset="-8">
+                                        <Border Background="#E8252535"
+                                                BorderBrush="#40FFFFFF"
+                                                BorderThickness="1"
+                                                CornerRadius="10"
+                                                Padding="6"
+                                                MinWidth="150">
+                                            <Border.Effect>
+                                                <DropShadowEffect ShadowDepth="4" BlurRadius="12" Opacity="0.45" Direction="270"/>
+                                            </Border.Effect>
+                                            <StackPanel>
+                                                <Button Command="{Binding SetOnlineStatusCommand}"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        Cursor="Hand" HorizontalContentAlignment="Left"
+                                                        Padding="10,8" Margin="0,0,0,2">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Ellipse Width="10" Height="10" Fill="#22C55E" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Online" Foreground="White" FontSize="13" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Command="{Binding SetInvisibleStatusCommand}"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        Cursor="Hand" HorizontalContentAlignment="Left"
+                                                        Padding="10,8">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Ellipse Width="10" Height="10" Fill="#808080" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Invisible" Foreground="White" FontSize="13" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                                <TextBlock Text="{Binding StatusLabel}"
+                                           Foreground="{Binding MyStatus, Converter={StaticResource UserStatusToBrushConverter}}"
+                                           FontSize="9"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,3,0,0"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="56"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,0,0,0">
+                    <Border CornerRadius="25" Background="#18FFFFFF"/>
+                    <Border Style="{StaticResource GlassPanelBorderStyle}" CornerRadius="25"/>
+
+                    <StackPanel VerticalAlignment="Center" Margin="0,15,0,15" HorizontalAlignment="Center">
+                        <Button Command="{Binding NavigateToGeneratorCommand}" Style="{StaticResource RoundNavButtonStyle}" Background="#5B4B6F" ToolTip="Gallery">
+                            <TextBlock Text="&#xE91B;" FontFamily="Segoe MDL2 Assets" FontSize="18" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Button>
+                        
+                        <Button Command="{Binding NavigateToSettingsCommand}" Style="{StaticResource RoundNavButtonStyle}" Background="#4E5165" ToolTip="Settings">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Column="1" Margin="0,10,0,10">
+                <Border CornerRadius="18" Background="#18FFFFFF"/>
+                <Border Style="{StaticResource GlassPanelBorderStyle}">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="5,0,5,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Chats" Foreground="White" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+
+                            <Button Grid.Column="1" Command="{Binding CreateChatCommand}" Style="{StaticResource GlassActionButtonStyle}" ToolTip="Add new chat" Margin="0,0,5,0">
+                                <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                            </Button>
+
+                            <Button Grid.Column="2" Command="{Binding RefreshConversationsCommand}" Style="{StaticResource GlassActionButtonStyle}" ToolTip="Refresh">
+                                <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                            </Button>
+                        </Grid>
+
+                        <!-- Chat Search Box -->
+                        <Border Grid.Row="1" Background="#25FFFFFF" CornerRadius="10" Height="30" Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Foreground="#90FFFFFF" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                <TextBox Grid.Column="1" Text="{Binding ChatSearchText, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White" VerticalAlignment="Center" Margin="5,0,5,0" ToolTip="Search chats..."/>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Grid.Row="2" Text="Loading conversations..." Foreground="#CCCCCC" HorizontalAlignment="Center" Margin="0,10" Visibility="{Binding IsLoadingConversations, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                            <ListBox x:Name="ConversationsListBox" Grid.Row="3" ItemsSource="{Binding ConversationsView}" SelectedItem="{Binding SelectedConversation}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" Visibility="{Binding IsLoadingConversations, Converter={StaticResource InverseBooleanConverter}}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="ClipToBounds" Value="False"/>
+                                    <Setter Property="Padding" Value="2"/>
+                                    <Setter Property="Margin" Value="0,2"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="Bd" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}" ClipToBounds="False">
+                                                    <ContentPresenter ClipToBounds="False"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background" Value="#28FFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background" Value="#18FFFFFF"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="Transparent" CornerRadius="8" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}">
+                                        <Border.ContextMenu>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
+                                                         Opened="ConversationContextMenu_Opened">
+                                                <ContextMenu.Resources>
+                                                    <Style TargetType="ContextMenu">
+                                                        <Setter Property="Background" Value="#E8252535"/>
+                                                        <Setter Property="BorderBrush" Value="#40FFFFFF"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                        <Setter Property="Padding" Value="4"/>
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="ContextMenu">
+                                                                    <Border Background="{TemplateBinding Background}" 
+                                                                            BorderBrush="{TemplateBinding BorderBrush}" 
+                                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                                            CornerRadius="8"
+                                                                            Padding="{TemplateBinding Padding}">
+                                                                        <Border.Effect>
+                                                                            <DropShadowEffect ShadowDepth="4" BlurRadius="12" Opacity="0.4" Direction="270"/>
+                                                                        </Border.Effect>
+                                                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                                                    </Border>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                    <Style TargetType="MenuItem">
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                        <Setter Property="Padding" Value="12,8"/>
+                                                        <Setter Property="Cursor" Value="Hand"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="MenuItem">
+                                                                    <Border x:Name="Border" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter ContentSource="Header"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsHighlighted" Value="True">
+                                                                            <Setter TargetName="Border" Property="Background" Value="#30FFFFFF"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </ContextMenu.Resources>
+                                                <MenuItem Header="Edit Group"
+                                                          Click="EditGroupMenuItem_Click"
+                                                          Visibility="Collapsed">
+                                                    <MenuItem.Icon>
+                                                        <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" Foreground="White"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <MenuItem Header="Leave Group"
+                                                          Click="LeaveGroupMenuItem_Click"
+                                                          Visibility="Collapsed">
+                                                    <MenuItem.Icon>
+                                                        <TextBlock Text="&#xE89B;" FontFamily="Segoe MDL2 Assets" Foreground="#FFD700"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <MenuItem Header="Add to Folder"
+                                                          Visibility="Collapsed">
+                                                    <MenuItem.Icon>
+                                                        <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" Foreground="White"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <Separator/>
+                                                <MenuItem Command="{Binding DeleteChatCommand}"
+                                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                                    <MenuItem.Header>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#FF6B6B" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                            <TextBlock Text="Delete Chat" Foreground="#FF6B6B" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </MenuItem.Header>
+                                                    <MenuItem.Style>
+                                                        <Style TargetType="MenuItem">
+                                                            <Setter Property="Background" Value="Transparent"/>
+                                                            <Setter Property="Padding" Value="12,8"/>
+                                                            <Setter Property="Cursor" Value="Hand"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="MenuItem">
+                                                                        <Border x:Name="Border" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter ContentSource="Header"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsHighlighted" Value="True">
+                                                                                <Setter TargetName="Border" Property="Background" Value="#30FF6B6B"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                        </Style>
+                                                    </MenuItem.Style>
+                                                </MenuItem>
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+                                        <StackPanel Orientation="Horizontal" Margin="8,5">
+                                            <StackPanel Width="48" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                <Grid Width="48" Height="48" HorizontalAlignment="Center" ClipToBounds="False">
+                                                    <!-- Orange outline for group chats -->
+                                                    <Ellipse Width="48" Height="48"
+                                                             Fill="Transparent"
+                                                             Stroke="#FF8C00"
+                                                             StrokeThickness="2.5"
+                                                             HorizontalAlignment="Center"
+                                                             VerticalAlignment="Center"
+                                                             Visibility="{Binding IsGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Ellipse.Effect>
+                                                            <DropShadowEffect Color="#FF8C00" BlurRadius="6" Opacity="0.55" ShadowDepth="0"/>
+                                                        </Ellipse.Effect>
+                                                    </Ellipse>
+                                                    <!-- Background circle -->
+                                                    <Ellipse Width="40" Height="40" Fill="#33354E" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <!-- Avatar Image -->
+                                                    <Ellipse Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <Ellipse.Fill>
+                                                            <ImageBrush ImageSource="{Binding AvatarImage}" Stretch="UniformToFill"/>
+                                                        </Ellipse.Fill>
+                                                    </Ellipse>
+                                                    <!-- Fallback: First character if no avatar -->
+                                                    <TextBlock Text="{Binding Name, Converter={StaticResource FirstCharacterConverter}}" 
+                                                               Foreground="White" 
+                                                               VerticalAlignment="Center" 
+                                                               HorizontalAlignment="Center" 
+                                                               FontWeight="Bold"
+                                                               Visibility="{Binding AvatarImage, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                                    <!-- Status glow pulse (online) -->
+                                                    <Ellipse Width="18" Height="18"
+                                                             Fill="{Binding Status, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                             VerticalAlignment="Bottom"
+                                                             HorizontalAlignment="Right"
+                                                             Margin="0,0,-1,-1"
+                                                             Panel.ZIndex="9"
+                                                             IsHitTestVisible="False"
+                                                             Visibility="{Binding ShowStatusIndicator, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Opacity" Value="0"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Online">
+                                                                        <Setter Property="Opacity" Value="0.55"/>
+                                                                        <DataTrigger.EnterActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                                     From="0.35" To="0.75"
+                                                                                                     Duration="0:0:0.7"/>
+                                                                                    <DoubleAnimation Storyboard.TargetProperty="Width"
+                                                                                                     From="16" To="22"
+                                                                                                     Duration="0:0:0.7"/>
+                                                                                    <DoubleAnimation Storyboard.TargetProperty="Height"
+                                                                                                     From="16" To="22"
+                                                                                                     Duration="0:0:0.7"/>
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </DataTrigger.EnterActions>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <!-- Online status: green = online, gray = offline/invisible -->
+                                                    <Ellipse Width="16" Height="16"
+                                                             Fill="{Binding Status, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                             Stroke="#FFFFFF"
+                                                             StrokeThickness="2.5"
+                                                             VerticalAlignment="Bottom"
+                                                             HorizontalAlignment="Right"
+                                                             Panel.ZIndex="10"
+                                                             Visibility="{Binding ShowStatusIndicator, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Ellipse.Effect>
+                                                            <DropShadowEffect BlurRadius="8" Opacity="0.95" ShadowDepth="0" Color="#22C55E"/>
+                                                        </Ellipse.Effect>
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Online">
+                                                                        <Setter Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="10" Opacity="1" ShadowDepth="0" Color="#22C55E"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Offline">
+                                                                        <Setter Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="6" Opacity="0.7" ShadowDepth="0" Color="#808080"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Invisible">
+                                                                        <Setter Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="6" Opacity="0.7" ShadowDepth="0" Color="#808080"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Away">
+                                                                        <Setter Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="10" Opacity="1" ShadowDepth="0" Color="#EAB308"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="DoNotDisturb">
+                                                                        <Setter Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="10" Opacity="1" ShadowDepth="0" Color="#EF4444"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                </Grid>
+                                                <!-- Group label below avatar (visible on narrow screens) -->
+                                                <TextBlock Text="Group"
+                                                           Foreground="#FF8C00"
+                                                           FontSize="9"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center"
+                                                           Margin="0,2,0,0"
+                                                           Visibility="{Binding IsGroup, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                            </StackPanel>
+                                            <Grid VerticalAlignment="Center" MinWidth="0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" Foreground="White" FontWeight="Bold" TextTrimming="CharacterEllipsis" Margin="0,0,6,0"/>
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LastMessageTime}" Foreground="#90FFFFFF" FontSize="10" VerticalAlignment="Center"/>
+                                                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,2,0,0">
+                                                     <StackPanel>
+                                                         <TextBlock Text="{Binding Status, Converter={StaticResource UserStatusToTextConverter}}"
+                                                                    Foreground="{Binding Status, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                                    FontSize="10"
+                                                                    FontWeight="SemiBold"
+                                                                    Visibility="{Binding ShowStatusIndicator, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                         <emoji:TextBlock Text="{Binding LastMessagePreview}" Foreground="#CCCCCC" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                                          Visibility="{Binding IsTyping, Converter={StaticResource InverseBooleanConverter}}"/>
+                                                     </StackPanel>
+                                                     <TextBlock Text="Typing..." Foreground="#FFD700" FontSize="11" FontStyle="Italic" Visibility="{Binding IsTyping, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                </Grid>
+                                            </Grid>
+                                            <Border Background="#FF0078D7" CornerRadius="8" Height="16" MinWidth="16" Padding="4,0" Margin="5,0,0,0" VerticalAlignment="Center" Visibility="{Binding UnreadCount, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="{Binding UnreadCount}" Foreground="White" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="2" Background="Transparent" ShowsPreview="True"/>
+
+            <Grid Grid.Column="2" Margin="10,10,10,10">
+                <Border CornerRadius="18" Background="#18FFFFFF"/>
+                <Border Style="{StaticResource GlassPanelBorderStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/> <RowDefinition Height="*"/> <RowDefinition Height="Auto"/> 
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="20,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*" MinWidth="80"/>
+                                <ColumnDefinition Width="*" MinWidth="100" MaxWidth="220"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0" Command="{Binding OpenUserProfileCommand}" Style="{StaticResource TransparentButtonStyle}" Padding="0" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <Grid Width="48" Height="48" Margin="0,0,12,0" ClipToBounds="False">
+                                        <!-- Orange outline for group chats -->
+                                        <Ellipse Width="48" Height="48"
+                                                 Fill="Transparent"
+                                                 Stroke="#FF8C00"
+                                                 StrokeThickness="2.5"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Visibility="{Binding SelectedConversation.IsGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect Color="#FF8C00" BlurRadius="6" Opacity="0.55" ShadowDepth="0"/>
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                        <Ellipse Width="40" Height="40" Fill="{DynamicResource NavButtonBackgroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding SelectedConversation.Name, Converter={StaticResource FirstCharacterConverter}}" Foreground="{DynamicResource IconBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold" FontSize="16"/>
+                                        <!-- Status glow pulse -->
+                                        <Ellipse Width="18" Height="18"
+                                                 Fill="{Binding SelectedConversation.Status, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                 VerticalAlignment="Bottom"
+                                                 HorizontalAlignment="Right"
+                                                 Margin="0,0,-1,-1"
+                                                 Panel.ZIndex="9"
+                                                 IsHitTestVisible="False"
+                                                 Visibility="{Binding SelectedConversation.ShowStatusIndicator, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Opacity" Value="0"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedConversation.Status}" Value="Online">
+                                                            <Setter Property="Opacity" Value="0.55"/>
+                                                            <DataTrigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                         From="0.35" To="0.75"
+                                                                                         Duration="0:0:0.7"/>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Width"
+                                                                                         From="16" To="22"
+                                                                                         Duration="0:0:0.7"/>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Height"
+                                                                                         From="16" To="22"
+                                                                                         Duration="0:0:0.7"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.EnterActions>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <Ellipse Width="16" Height="16"
+                                                 Fill="{Binding SelectedConversation.Status, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                 Stroke="#FFFFFF"
+                                                 StrokeThickness="2.5"
+                                                 VerticalAlignment="Bottom"
+                                                 HorizontalAlignment="Right"
+                                                 Panel.ZIndex="10"
+                                                 Visibility="{Binding SelectedConversation.ShowStatusIndicator, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect BlurRadius="10" Opacity="1" ShadowDepth="0" Color="#22C55E"/>
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SelectedConversation.Name}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" FontSize="14"/>
+                                        <TextBlock Text="{Binding SelectedConversation.Status, Converter={StaticResource UserStatusToTextConverter}}"
+                                                   Foreground="{Binding SelectedConversation.Status, Converter={StaticResource UserStatusToBrushConverter}}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Visibility="{Binding SelectedConversation.ShowStatusIndicator, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                        <TextBlock Text="Group"
+                                                   Foreground="#FF8C00"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Visibility="{Binding SelectedConversation.IsGroup, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Button>
+                            
+                            <TextBlock Grid.Column="1" Text="{Binding ErrorMessage}" Foreground="{DynamicResource ErrorColorBrush}" Background="#20000000" Padding="5" Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}" Margin="10,0,0,0"/>
+                            
+                            <!-- Call button near search -->
+                            <Button Grid.Column="2"
+                                    Command="{Binding StartCallCommand}"
+                                    Style="{StaticResource TransparentButtonStyle}"
+                                    Padding="6"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    ToolTip="Start call"
+                                    Margin="0,0,10,0">
+                                <TextBlock Text="&#xE717;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Button>
+
+                            <Border Grid.Column="3" Background="{DynamicResource SearchInputBackgroundBrush}" CornerRadius="12" Height="32">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/> 
+                                        <ColumnDefinition Width="*"/>     
+                                        <ColumnDefinition Width="Auto"/> 
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    
+                                    <TextBox Grid.Column="1" Text="{Binding MessageSearchText, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextPrimaryBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="5,0,0,0" ToolTip="Search messages...">
+                                        <TextBox.InputBindings>
+                                            <KeyBinding Key="Enter" Command="{Binding SearchMessagesInChatCommand}"/>
+                                        </TextBox.InputBindings>
+                                    </TextBox>
+                                    
+                                    <Button Grid.Column="2" Command="{Binding ClearMessageSearchCommand}" Style="{StaticResource CircularIconButtonStyle}" Width="20" Height="20" Margin="0,0,5,0" ToolTip="Clear search">
+                                        <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <ScrollViewer x:Name="MessagesScrollViewer" 
+                                          Style="{StaticResource ChatScrollViewerStyle}"
+                                          VerticalScrollBarVisibility="Auto" 
+                                          HorizontalScrollBarVisibility="Disabled" 
+                                          Padding="20,10" 
+                                          ScrollChanged="MessagesScrollViewer_ScrollChanged">
+                                <ItemsControl ItemsSource="{Binding Messages}" ItemTemplateSelector="{StaticResource MessageItemTemplateSelector}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Vertical"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <!-- Scroll to bottom button -->
+                            <Button x:Name="ScrollToBottomButton" 
+                                    Click="ScrollToBottomButton_Click"
+                                    Style="{StaticResource RoundNavButtonStyle}" 
+                                    Background="#33354E"
+                                    HorizontalAlignment="Right" 
+                                    VerticalAlignment="Bottom" 
+                                    Margin="0,0,20,20"
+                                    Visibility="Collapsed"
+                                    ToolTip="Scroll to bottom">
+                                <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="18" VerticalAlignment="Center" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                </TextBlock>
+                            </Button>
+                        </Grid>
+
+                        <Border Grid.Row="2" BorderBrush="#30FFFFFF" BorderThickness="0,1,0,0" MinHeight="60">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Background="#40FFA500" Padding="10,5" Visibility="{Binding MessageBeingEdited, Converter={StaticResource NullToVisibilityConverter}}">
+                                    <Grid>
+                                        <TextBlock Text="Editing message..." Foreground="White" FontStyle="Italic"/>
+                                        <Button Content="Cancel" Command="{Binding CancelEditCommand}" HorizontalAlignment="Right" Style="{StaticResource GlassActionButtonStyle}" Width="50" Height="20" FontSize="10"/>
+                                    </Grid>
+                                </Border>
+                                
+                                <!-- Pending Attachments Section -->
+                                <Border Grid.Row="1" Background="#252545" Padding="10,5" Visibility="{Binding PendingAttachments.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding PendingAttachments}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#33354E" CornerRadius="8" Padding="5" Margin="0,0,8,0" Width="120">
+                                                        <Grid>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto"/>
+                                                                <RowDefinition Height="Auto"/>
+                                                            </Grid.RowDefinitions>
+                                                            
+                                                            <!-- Image Preview or Icon -->
+                                                            <Grid Grid.Row="0" Height="80" Background="#252545" Margin="0,0,0,5">
+                                                                <!-- Image Thumbnail -->
+                                                                <Image Source="{Binding ThumbnailImage}" Stretch="UniformToFill" Visibility="{Binding HasThumbnail, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                                
+                                                                <!-- File Icon (for non-images) -->
+                                                                <TextBlock Text="{Binding Icon}" FontFamily="Segoe MDL2 Assets" FontSize="32" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding HasThumbnail, Converter={StaticResource InverseBooleanConverter}}"/>
+                                                                
+                                                                <!-- Remove Button -->
+                                                                <Button Command="{Binding DataContext.RemoveAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Width="20" Height="20" Background="#CC000000" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="2" ToolTip="Remove">
+                                                                    <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="White"/>
+                                                                </Button>
+                                                            </Grid>
+                                                            
+                                                            <StackPanel Grid.Row="1">
+                                                                <TextBlock Text="{Binding FileName}" Foreground="White" FontSize="10" TextTrimming="CharacterEllipsis" ToolTip="{Binding FileName}"/>
+                                                                <TextBlock Text="{Binding FileSizeFormatted}" Foreground="#CCCCCC" FontSize="9"/>
+                                                                <!-- Added CheckBox for compression toggle -->
+                                                                <CheckBox Content="Compress" IsChecked="{Binding IsCompressed, Mode=TwoWay}" Visibility="{Binding CanCompress, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#CCCCCC" FontSize="9" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="Uploading..." Foreground="#FFD700" FontSize="9" FontStyle="Italic" Visibility="{Binding IsUploading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
+                                <Grid Grid.Row="2" VerticalAlignment="Center" Margin="10,12" Visibility="{Binding MessageBeingEdited, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="EmojiButtonContainer" Grid.Column="0" Background="#25FFFFFF" CornerRadius="20">
+                                        <Grid Margin="8,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Command="{Binding AttachFileCommand}" Style="{StaticResource CircularIconButtonStyle}" ToolTip="Attach File">
+                                                <TextBlock Text="&#xE723;" FontFamily="Segoe MDL2 Assets" Foreground="White" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                            </Button>
+                                            <emoji:RichTextBox x:Name="MessageInputRichTextBox" Grid.Column="1" Background="Transparent" BorderThickness="0" Foreground="White" VerticalAlignment="Center" CaretBrush="White" Padding="5,0" IsEnabled="{Binding SelectedConversation, Converter={StaticResource NullToBooleanConverter}}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Loaded="MessageInputRichTextBox_Loaded" TextChanged="MessageInputRichTextBox_TextChanged">
+                                                <emoji:RichTextBox.InputBindings>
+                                                    <KeyBinding Key="Enter" Command="{Binding SendMessageCommand}"/>
+                                                </emoji:RichTextBox.InputBindings>
+                                            </emoji:RichTextBox>
+                                            <Button Grid.Column="2" Command="{Binding ToggleEmojiPickerCommand}" Style="{StaticResource CircularIconButtonStyle}" ToolTip="Emoji" Margin="5,0,0,0">
+                                                <TextBlock Text="&#xE76E;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                    <Button Grid.Column="1" Command="{Binding SendMessageCommand}" Background="#25FFFFFF" Width="40" Height="40" Margin="5,0" Cursor="Hand">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="20">
+                                                    <TextBlock Text="&#xE724;" FontFamily="Segoe MDL2 Assets" Foreground="White" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                        <TextBlock.RenderTransform>
+                                                            <RotateTransform Angle="45" CenterX="8" CenterY="8"/>
+                                                        </TextBlock.RenderTransform>
+                                                    </TextBlock>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="border" Property="Background" Value="#40FFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter TargetName="border" Property="Background" Value="#60FFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter TargetName="border" Property="Opacity" Value="0.5"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <Button Grid.Column="2" Width="40" Height="40" Margin="5,0" Cursor="Hand" ToolTip="Microphone" 
+                                            PreviewMouseDown="MicrophoneButton_PreviewMouseDown" 
+                                            PreviewMouseUp="MicrophoneButton_PreviewMouseUp" 
+                                            MouseLeave="MicrophoneButton_MouseLeave"
+                                            Click="MicrophoneButton_Click">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Background" Value="#25FFFFFF"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="20">
+                                                                <TextBlock Text="&#xE720;" FontFamily="Segoe MDL2 Assets" Foreground="White" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#40FFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter Property="Background" Value="#60FFFFFF"/>
+                                                    </Trigger>
+                                                    <!-- Immediate highlight while button held (pressed/captured) -->
+                                                    <Trigger Property="IsMouseCaptured" Value="True">
+                                                        <Setter Property="Background" Value="#48E0D0"/>
+                                                    </Trigger>
+                                                    <DataTrigger Binding="{Binding DataContext.IsVoiceRecordingActive, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                        <Setter Property="Background" Value="#FF5A5A"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </Grid>
+                                 <Grid Grid.Row="2" VerticalAlignment="Center" Margin="10,12" Visibility="{Binding MessageBeingEdited, Converter={StaticResource NullToVisibilityConverter}}">
+                                     <Border Background="#25FFFFFF" CornerRadius="20">
+                                         <Grid Margin="8,5">
+                                              <emoji:RichTextBox x:Name="MessageInputRichTextBox2" Background="Transparent" BorderThickness="0" Foreground="White" VerticalAlignment="Center" CaretBrush="White" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Loaded="MessageInputRichTextBox2_Loaded" TextChanged="MessageInputRichTextBox2_TextChanged">
+                                                  <emoji:RichTextBox.InputBindings>
+                                                      <KeyBinding Key="Enter" Command="{Binding SendMessageCommand}"/>
+                                                  </emoji:RichTextBox.InputBindings>
+                                              </emoji:RichTextBox>
+                                         </Grid>
+                                     </Border>
+                                 </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+        
+        <!-- Emoji Picker Popup -->
+        <Popup x:Name="EmojiPickerPopup" 
+               Placement="Custom" 
+               PlacementTarget="{Binding ElementName=EmojiButtonContainer}"
+               CustomPopupPlacementCallback="EmojiPickerPopup_PlacementCallback"
+               StaysOpen="False"
+               PopupAnimation="Fade"
+               AllowsTransparency="True"
+               Opened="EmojiPickerPopup_Opened"
+               Closed="EmojiPickerPopup_Closed">
+            <Border Background="Transparent" Padding="0,0,0,10">
+                <views:EmojiPicker x:Name="EmojiPickerControl" EmojiSelected="EmojiPicker_EmojiSelected"/>
+            </Border>
+        </Popup>
+
+        <Grid x:Name="UserProfileOverlay" Visibility="{Binding IsUserProfileVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Background="{DynamicResource ProfileOverlayBrush}" MouseDown="UserProfileOverlay_MouseDown">
+            <Border Width="420" 
+                    VerticalAlignment="Center" 
+                    HorizontalAlignment="Center" 
+                    Padding="30"
+                    CornerRadius="20"
+                    Background="#F0202030"
+                    MouseDown="UserProfileModal_MouseDown">
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#60FFFFFF" Offset="0.0"/>
+                        <GradientStop Color="#00FFFFFF" Offset="0.5"/>
+                        <GradientStop Color="#20FFFFFF" Offset="1.0"/>
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+                <Border.BorderThickness>
+                    <Thickness>1</Thickness>
+                </Border.BorderThickness>
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" Direction="315" ShadowDepth="5" BlurRadius="15" Opacity="0.5"/>
+                </Border.Effect>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0">
+                    <Grid>
+                        <Grid.Resources>
+                            <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+                            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+                            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanConverter"/>
+                        </Grid.Resources>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Close Button (Top Right) -->
+                        <Button Grid.Row="0" 
+                                Command="{Binding CloseUserProfileCommand}" 
+                                Style="{StaticResource RoundNavButtonStyle}" 
+                                Width="36" Height="36" 
+                                HorizontalAlignment="Right" 
+                                VerticalAlignment="Top"
+                                Margin="0,3,3,0"
+                                ToolTip="Close Profile">
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
+                        </Button>
+
+                        <!-- Avatar + Name + Status -->
+                        <StackPanel Grid.Row="1" Margin="0,-5,0,10" HorizontalAlignment="Center">
+                            <Grid Width="90" Height="90" HorizontalAlignment="Center">
+                                <Ellipse>
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect Color="#EEDC9A" BlurRadius="20" Opacity="0.3" ShadowDepth="0"/>
+                                    </Ellipse.Effect>
+                                    <Ellipse.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#F0E6B5" Offset="0"/>
+                                            <GradientStop Color="#C4A068" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <!-- Avatar Image -->
+                                <Ellipse>
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="{Binding ProfileAvatarImage}" Stretch="UniformToFill"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <!-- Fallback: First character if no avatar -->
+                                <TextBlock Text="{Binding SelectedConversation.Name, Converter={StaticResource FirstCharacterConverter}, FallbackValue='U'}" 
+                                          FontFamily="Segoe UI" FontSize="36" Foreground="#503010" 
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
+                                          Visibility="{Binding ProfileAvatarImage, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                <!-- Status glow pulse -->
+                                <Ellipse Width="22" Height="22"
+                                        Fill="{Binding ProfileStatus, Converter={StaticResource UserStatusToBrushConverter}}"
+                                        VerticalAlignment="Bottom"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,0,-4,-4"
+                                        IsHitTestVisible="False">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Opacity" Value="0"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ProfileStatus}" Value="Online">
+                                                    <Setter Property="Opacity" Value="0.5"/>
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                 From="0.3" To="0.7"
+                                                                                 Duration="0:0:0.7"/>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Width"
+                                                                                 From="18" To="26"
+                                                                                 Duration="0:0:0.7"/>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Height"
+                                                                                 From="18" To="26"
+                                                                                 Duration="0:0:0.7"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <!-- Status indicator -->
+                                <Ellipse Width="20" Height="20" 
+                                        Fill="{Binding ProfileStatus, Converter={StaticResource UserStatusToBrushConverter}}" 
+                                        Stroke="#FFFFFF"
+                                        StrokeThickness="3"
+                                        VerticalAlignment="Bottom" 
+                                        HorizontalAlignment="Right" 
+                                        Margin="0,0,-2,-2">
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect Color="#22C55E" BlurRadius="10" Opacity="1" ShadowDepth="0"/>
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                            </Grid>
+                            
+                            <TextBlock Text="{Binding ProfileDisplayName, FallbackValue='User Name'}" 
+                                      Foreground="{DynamicResource TextPrimaryBrush}" 
+                                      FontSize="20" FontWeight="SemiBold" 
+                                      HorizontalAlignment="Center" Margin="0,15,0,5"/>
+                            
+                            <TextBlock Text="{Binding ProfileStatusText}" 
+                                      Foreground="{Binding ProfileStatus, Converter={StaticResource UserStatusToBrushConverter}}" 
+                                      FontSize="14"
+                                      FontWeight="SemiBold"
+                                      HorizontalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Action Buttons Row -->
+                        <Grid Grid.Row="2" Margin="25,0,25,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Chat Button -->
+                            <Button Grid.Column="0" Style="{StaticResource TransparentButtonStyle}" Padding="10" 
+                                   Command="{Binding CloseUserProfileCommand}">
+                                <StackPanel>
+                                    <Border Background="{DynamicResource NavButtonBackgroundBrush}" 
+                                           Width="50" Height="50" CornerRadius="25" 
+                                           Margin="0,0,0,8">
+                                        <TextBlock Text="&#xE8F2;" FontFamily="Segoe MDL2 Assets" 
+                                                  FontSize="20" Foreground="{DynamicResource IconBrush}" 
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Chat" Foreground="{DynamicResource TextSecondaryBrush}" 
+                                              FontSize="11" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Sound Button -->
+                            <Button Grid.Column="1" Style="{StaticResource TransparentButtonStyle}" Padding="10" 
+                                   ToolTip="Coming soon">
+                                <StackPanel>
+                                    <Border Background="{DynamicResource NavButtonBackgroundBrush}" 
+                                           Width="50" Height="50" CornerRadius="25" 
+                                           Margin="0,0,0,8">
+                                        <TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" 
+                                                  FontSize="20" Foreground="{DynamicResource IconBrush}" 
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Sound" Foreground="{DynamicResource TextSecondaryBrush}" 
+                                              FontSize="11" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Call Button -->
+                            <Button Grid.Column="2" Style="{StaticResource TransparentButtonStyle}" Padding="10" 
+                                   Command="{Binding StartCallCommand}"
+                                   ToolTip="Start voice call">
+                                <StackPanel>
+                                    <Border Background="{DynamicResource NavButtonBackgroundBrush}" 
+                                           Width="50" Height="50" CornerRadius="25" 
+                                           Margin="0,0,0,8">
+                                        <TextBlock Text="&#xE717;" FontFamily="Segoe MDL2 Assets" 
+                                                  FontSize="20" Foreground="{DynamicResource IconBrush}" 
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Call" Foreground="{DynamicResource TextSecondaryBrush}" 
+                                              FontSize="11" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <Border Grid.Row="3" Height="8" Background="Transparent"/>
+
+                        <!-- Media Counters List -->
+                        <StackPanel Grid.Row="4" Margin="0,5,0,5">
+                            <!-- Photos -->
+                            <Button Style="{StaticResource TransparentButtonStyle}" 
+                                   Command="{Binding OpenImagesGridCommand}"
+                                   Padding="0" HorizontalContentAlignment="Stretch"
+                                   Visibility="{Binding ImagesCount, Converter={StaticResource CountToVisibilityConverter}}">
+                                <Border Padding="25,12" Background="Transparent">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" 
+                                                  Foreground="#FF69B4" FontSize="20" Margin="0,0,20,0" 
+                                                  VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="Photos" 
+                                                  Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                  FontSize="14" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding ImagesCount}" 
+                                                  Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                  FontSize="14" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                                    </Grid>
+                                </Border>
+                            </Button>
+
+                            <!-- Files -->
+                            <Button Style="{StaticResource TransparentButtonStyle}" 
+                                   Command="{Binding OpenFilesListCommand}"
+                                   Padding="0" HorizontalContentAlignment="Stretch"
+                                   Visibility="{Binding FilesCount, Converter={StaticResource CountToVisibilityConverter}}">
+                                <Border Padding="25,12" Background="Transparent">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" 
+                                                  Foreground="#FF8C00" FontSize="20" Margin="0,0,20,0" 
+                                                  VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="Files" 
+                                                  Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                  FontSize="14" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding FilesCount}" 
+                                                  Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                  FontSize="14" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                                    </Grid>
+                                </Border>
+                            </Button>
+
+                            <!-- Videos -->
+                            <Button Style="{StaticResource TransparentButtonStyle}" 
+                                   Padding="0" HorizontalContentAlignment="Stretch"
+                                   Visibility="{Binding VideosCount, Converter={StaticResource CountToVisibilityConverter}}">
+                                <Border Padding="25,12" Background="Transparent">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE714;" FontFamily="Segoe MDL2 Assets" 
+                                                  Foreground="#9370DB" FontSize="20" Margin="0,0,20,0" 
+                                                  VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="Videos" 
+                                                  Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                  FontSize="14" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding VideosCount}" 
+                                                  Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                  FontSize="14" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                                    </Grid>
+                                </Border>
+                            </Button>
+                        </StackPanel>
+
+                        <Border Grid.Row="5" Height="8" Background="Transparent"/>
+
+                        <!-- Group Chat Participants List -->
+                        <StackPanel Grid.Row="6" Margin="0,5,0,5">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedConversation.Type}" Value="{x:Static enums:ChatType.Group}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedConversation.Type}" Value="{x:Static enums:ChatType.Channel}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            
+                            <!-- Participants List -->
+                            <ItemsControl ItemsSource="{Binding GroupChatParticipants}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="25,10" Background="Transparent" Margin="0,0,0,5">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <!-- Avatar -->
+                                                <Grid Grid.Column="0" Width="40" Height="40" Margin="0,0,15,0">
+                                                    <Ellipse Fill="{DynamicResource NavButtonBackgroundBrush}">
+                                                        <Ellipse.Effect>
+                                                            <DropShadowEffect Color="#000000" BlurRadius="5" Opacity="0.3" ShadowDepth="1"/>
+                                                        </Ellipse.Effect>
+                                                    </Ellipse>
+                                                    <Ellipse>
+                                                        <Ellipse.Fill>
+                                                            <ImageBrush ImageSource="{Binding AvatarUrl}" Stretch="UniformToFill"/>
+                                                        </Ellipse.Fill>
+                                                    </Ellipse>
+                                                    <TextBlock Text="{Binding DisplayName, Converter={StaticResource FirstCharacterConverter}, FallbackValue='U'}" 
+                                                              FontFamily="Segoe UI" FontSize="16" Foreground="{DynamicResource IconBrush}" 
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
+                                                              Visibility="{Binding AvatarUrl, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                                    <!-- Status indicator -->
+                                                    <Ellipse Width="12" Height="12" 
+                                                            Fill="{Binding Status, Converter={StaticResource UserStatusToBrushConverter}}" 
+                                                            VerticalAlignment="Bottom" 
+                                                            HorizontalAlignment="Right" 
+                                                            Margin="0,0,-2,-2">
+                                                        <Ellipse.Effect>
+                                                            <DropShadowEffect Color="#000000" BlurRadius="2" Opacity="0.5" ShadowDepth="1"/>
+                                                        </Ellipse.Effect>
+                                                    </Ellipse>
+                                                </Grid>
+                                                
+                                                <!-- Name and Status -->
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <!-- DisplayName or Username -->
+                                                    <TextBlock Text="{Binding DisplayName}" 
+                                                              Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                              FontSize="14" FontWeight="SemiBold"
+                                                              Visibility="{Binding DisplayName, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                                    <TextBlock Text="{Binding Username}" 
+                                                              Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                              FontSize="14" FontWeight="SemiBold"
+                                                              Visibility="{Binding DisplayName, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                                    <TextBlock Text="{Binding Status, Converter={StaticResource UserStatusToTextConverter}}" 
+                                                              Foreground="{Binding Status, Converter={StaticResource UserStatusToBrushConverter}}" 
+                                                              FontSize="11" Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <Border Grid.Row="7" Height="8" Background="Transparent"/>
+
+                        <!-- Bottom Actions -->
+                        <Grid Grid.Row="8" Margin="25,10,25,20">
+                            <!-- Block Button -->
+                            <Button HorizontalAlignment="Center" Style="{StaticResource TransparentButtonStyle}" Padding="10">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE25B;" FontFamily="Segoe MDL2 Assets" 
+                                              Foreground="{DynamicResource ErrorColorBrush}" 
+                                              FontSize="18" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Block" Foreground="{DynamicResource ErrorColorBrush}" 
+                                              FontSize="12" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+        <!-- Voice Recording Timer -->
+        <Border HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="20,0,20,80"
+                Padding="10,6"
+                CornerRadius="10"
+                Background="#A0151525"
+                BorderBrush="#40FFFFFF"
+                BorderThickness="1"
+                Visibility="{Binding IsVoiceRecordingActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Width="10" Height="10" Fill="#FF5252" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Ellipse.Effect>
+                        <DropShadowEffect Color="#FF5252" BlurRadius="10" Opacity="0.7" ShadowDepth="0"/>
+                    </Ellipse.Effect>
+                </Ellipse>
+                <TextBlock Text="{Binding VoiceRecordingDurationText}"
+                           Foreground="White"
+                           FontWeight="SemiBold"
+                           FontSize="14"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

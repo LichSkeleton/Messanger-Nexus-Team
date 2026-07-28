@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c0c0d" />
+    <meta name="description" content="NexusTeam - real-time chat, available on any device." />
+    <title>NexusTeam</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-mode">
+    <!-- ===================== AUTH (login / register) ===================== -->
+    <main id="authView" class="auth-view">
+        <div class="auth-card glass">
+            <div class="brand">
+                <img class="brand-logo" src="icon.svg" alt="NexusTeam" width="56" height="56" />
+                <h1 class="brand-name">NexusTeam</h1>
+                <p class="brand-tagline">Your team, in sync — on any device.</p>
+            </div>
+
+            <form id="loginForm" class="auth-form" autocomplete="on">
+                <label class="field-label" for="loginIdentifier">Username or email</label>
+                <input class="field-input" id="loginIdentifier" name="username" type="text"
+                       autocomplete="username" placeholder="you@example.com" required />
+
+                <label class="field-label" for="loginPassword">Password</label>
+                <input class="field-input" id="loginPassword" name="password" type="password"
+                       autocomplete="current-password" placeholder="Your password" required />
+
+                <button class="btn-primary" type="submit">Sign in</button>
+                <p class="form-switch">
+                    New here? <button type="button" class="link-btn" id="showRegister">Create an account</button>
+                </p>
+            </form>
+
+            <form id="registerForm" class="auth-form hidden" autocomplete="on">
+                <label class="field-label" for="regDisplayName">Display name</label>
+                <input class="field-input" id="regDisplayName" type="text" placeholder="Ada Lovelace" required />
+
+                <label class="field-label" for="regUsername">Username</label>
+                <input class="field-input" id="regUsername" type="text" autocomplete="username" placeholder="ada" required />
+
+                <label class="field-label" for="regEmail">Email</label>
+                <input class="field-input" id="regEmail" type="email" autocomplete="email" placeholder="ada@example.com" required />
+
+                <label class="field-label" for="regPassword">Password</label>
+                <input class="field-input" id="regPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters" required />
+
+                <button class="btn-primary" type="submit">Create account</button>
+                <p class="form-switch">
+                    Already registered? <button type="button" class="link-btn" id="showLogin">Sign in</button>
+                </p>
+            </form>
+
+            <p id="authError" class="auth-error" role="alert"></p>
+        </div>
+    </main>
+
+    <!-- ===================== CHAT ===================== -->
+    <div id="chatView" class="chat-view hidden">
+        <aside id="sidebar" class="sidebar">
+            <header class="sidebar-header">
+                <div class="me">
+                    <div class="me-avatar">
+                        <span class="avatar-wrap">
+                            <img id="myAvatar" class="avatar" alt="" />
+                            <button type="button" id="myStatusBadge" class="status-on-avatar" title="Change status" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false">
+                                <span id="myStatusBadgeDot" class="status-dot-inline online" aria-hidden="true"></span>
+                            </button>
+                        </span>
+                        <div id="statusMenuMobile" class="status-menu status-menu-avatar hidden" role="listbox" aria-label="Status">
+                            <button type="button" class="status-option" data-status="online" role="option">
+                                <span class="status-dot-inline online"></span> Online
+                            </button>
+                            <button type="button" class="status-option" data-status="invisible" role="option">
+                                <span class="status-dot-inline offline"></span> Invisible
+                            </button>
+                        </div>
+                    </div>
+                    <div class="me-info">
+                        <span id="myName" class="me-name">—</span>
+                    </div>
+                </div>
+                <div class="sidebar-actions">
+                    <button id="newChatBtn" class="icon-btn" title="New chat / group" aria-label="New chat">+</button>
+                    <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+                    <button id="logoutBtn" class="icon-btn" title="Log out" aria-label="Log out">⏻</button>
+                </div>
+            </header>
+
+            <div id="folderBar" class="folder-bar">
+                <button type="button" class="folder-chip active" data-folder-id="all">All</button>
+                <div id="folderChips" class="folder-chips"></div>
+                <button type="button" id="newFolderBtn" class="folder-chip add" title="New personal folder">+</button>
+            </div>
+
+            <div class="search-bar">
+                <input id="chatSearch" class="search-input" type="search" placeholder="Search chats" />
+            </div>
+
+            <ul id="chatList" class="chat-list"></ul>
+            <p id="chatListEmpty" class="empty-hint hidden">No chats yet. Tap + to start one.</p>
+        </aside>
+
+        <section id="conversation" class="conversation">
+            <div id="noChatPlaceholder" class="no-chat">
+                <div class="no-chat-inner">
+                    <img class="brand-logo big" src="icon.svg" alt="NexusTeam" width="72" height="72" />
+                    <p>Select a chat to start messaging</p>
+                </div>
+            </div>
+
+            <div id="activeChat" class="active-chat hidden">
+                <header class="conversation-header">
+                    <button id="backBtn" class="icon-btn back-btn" aria-label="Back to chats">‹</button>
+                    <span class="avatar-wrap">
+                        <img id="peerAvatar" class="avatar" alt="" />
+                        <span id="peerPresenceDot" class="status-dot offline hidden" aria-hidden="true"></span>
+                    </span>
+                    <div class="peer-info">
+                        <span id="peerName" class="peer-name">—</span>
+                        <span id="peerStatus" class="peer-status"></span>
+                    </div>
+                    <button id="chatMenuBtn" class="icon-btn" title="Chat options" aria-label="Chat options">⋯</button>
+                </header>
+
+                <div id="messages" class="messages"></div>
+
+                <div class="composer-wrap" style="position: relative;">
+                    <!-- Emoji popover -->
+                    <div id="pickerPanel" class="picker-panel hidden">
+                        <div id="emojiGrid" class="emoji-grid"></div>
+                    </div>
+
+                    <!-- Attachment / recording preview -->
+                    <div id="composeStrip" class="compose-strip hidden">
+                        <span id="stripIcon"></span>
+                        <span id="stripText"><span class="strip-name" id="stripName"></span></span>
+                        <button type="button" id="stripCancel" class="icon-btn strip-cancel" style="width:30px;height:30px;font-size:16px;margin-left:auto;" aria-label="Cancel">×</button>
+                    </div>
+
+                    <form id="composer" class="composer">
+                        <button type="button" id="attachBtn" class="tool-btn" title="Attach file" aria-label="Attach">📎</button>
+                        <button type="button" id="emojiBtn" class="tool-btn" title="Emoji" aria-label="Emoji">😊</button>
+                        <button type="button" id="imageGenBtn" class="tool-btn" title="Generate image" aria-label="Generate image">✨</button>
+                        <input id="messageInput" class="message-input" type="text" placeholder="Message" autocomplete="off" />
+                        <button type="button" id="voiceBtn" class="tool-btn" title="Record voice message" aria-label="Voice">🎤</button>
+                        <button class="send-btn" type="submit" aria-label="Send">➤</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <input id="fileInput" type="file" class="hidden" />
+
+    <!-- ===================== New chat / group modal ===================== -->
+    <div id="newChatModal" class="modal-overlay hidden">
+        <div class="modal glass">
+            <header class="modal-header">
+                <h2 id="newChatTitle">New chat</h2>
+                <button id="closeNewChat" class="icon-btn" aria-label="Close">×</button>
+            </header>
+            <div class="seg">
+                <button class="seg-btn active" id="segDirect" data-mode="direct">Direct</button>
+                <button class="seg-btn" id="segGroup" data-mode="group">Group</button>
+            </div>
+            <input id="groupName" class="setting-input hidden" type="text" placeholder="Group name" style="margin-bottom:10px;" />
+            <input id="userSearch" class="search-input" type="search" placeholder="Search people" />
+            <ul id="userList" class="user-list"></ul>
+            <button id="createGroupBtn" class="btn-primary hidden" type="button">Create group</button>
+        </div>
+    </div>
+
+    <!-- ===================== Settings modal ===================== -->
+    <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal glass">
+            <header class="modal-header">
+                <h2>Settings</h2>
+                <button id="closeSettings" class="icon-btn" aria-label="Close">×</button>
+            </header>
+            <div class="modal-scroll">
+                <div class="setting-section-title">Profile</div>
+                <div class="avatar-edit">
+                    <img id="settingsAvatar" class="avatar" alt="" />
+                    <div>
+                        <button id="uploadAvatarBtn" class="btn-secondary" type="button">Change photo</button>
+                        <input id="avatarInput" type="file" accept="image/*" class="hidden" />
+                    </div>
+                </div>
+                <label class="field-label" for="settingsDisplayName">Display name</label>
+                <input id="settingsDisplayName" class="setting-input" type="text" />
+                <button id="saveProfileBtn" class="btn-secondary" type="button" style="margin-top:10px;">Save profile</button>
+
+                <div class="setting-section-title">Preferences</div>
+                <div class="setting-row">
+                    <div><div class="s-label">Notifications</div><div class="s-sub">Desktop message alerts</div></div>
+                    <label class="switch"><input type="checkbox" id="prefNotifications" /><span class="track"></span><span class="thumb"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><div class="s-label">Sound</div><div class="s-sub">Play a sound on new messages</div></div>
+                    <label class="switch"><input type="checkbox" id="prefSound" /><span class="track"></span><span class="thumb"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><div class="s-label">Theme</div><div class="s-sub">Black &amp; orange (dark) or light</div></div>
+                    <select id="prefTheme" class="select-input">
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                    </select>
+                </div>
+                <button id="savePrefsBtn" class="btn-primary" type="button">Save preferences</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== Image generation modal ===================== -->
+    <div id="imageGenModal" class="modal-overlay hidden">
+        <div class="modal glass">
+            <header class="modal-header">
+                <h2>Generate image</h2>
+                <button id="closeImageGen" class="icon-btn" aria-label="Close">×</button>
+            </header>
+            <div class="modal-scroll">
+                <label class="field-label" for="genPrompt">Prompt</label>
+                <textarea id="genPrompt" class="field-input" rows="3" placeholder="A neon fox in a cyberpunk city..."></textarea>
+                <div class="gen-row">
+                    <select id="genModel" class="select-input" style="flex:1;">
+                        <option value="flux">Flux — high quality</option>
+                        <option value="turbo">Turbo — fast</option>
+                        <option value="gptimage">GPT Image</option>
+                    </select>
+                    <button id="genBtn" class="btn-secondary" type="button">Generate</button>
+                </div>
+                <div id="genPreview" class="gen-preview">Your image will appear here</div>
+                <button id="sendGenBtn" class="btn-primary hidden" type="button">Send to chat</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="lightbox" class="lightbox hidden"><img id="lightboxImg" alt="" /></div>
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- ===================== Confirm dialog ===================== -->
+    <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <div class="modal glass confirm-modal">
+            <header class="modal-header">
+                <h2 id="confirmTitle">Delete message?</h2>
+                <button id="confirmClose" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <p id="confirmText" class="confirm-text">This message will be removed for everyone in the chat.</p>
+            <div class="confirm-actions">
+                <button id="confirmCancel" class="btn-secondary" type="button">Cancel</button>
+                <button id="confirmOk" class="btn-danger" type="button">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== Chat / group options menu ===================== -->
+    <div id="chatOptionsModal" class="modal-overlay hidden">
+        <div class="modal glass confirm-modal">
+            <header class="modal-header">
+                <h2>Chat options</h2>
+                <button id="closeChatOptions" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <div class="chat-options-list">
+                <button type="button" id="optEditGroup" class="chat-option hidden">Edit group name &amp; avatar</button>
+                <button type="button" id="optLeaveGroup" class="chat-option danger hidden">Leave group</button>
+                <button type="button" id="optAddToFolder" class="chat-option">Add to folder…</button>
+                <button type="button" id="optDeleteChat" class="chat-option danger">Delete chat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== Edit group modal ===================== -->
+    <div id="editGroupModal" class="modal-overlay hidden">
+        <div class="modal glass">
+            <header class="modal-header">
+                <h2>Edit group</h2>
+                <button id="closeEditGroup" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <div class="modal-scroll">
+                <div class="avatar-edit">
+                    <img id="editGroupAvatar" class="avatar" alt="" />
+                    <div>
+                        <button id="editGroupAvatarBtn" class="btn-secondary" type="button">Change photo</button>
+                        <input id="editGroupAvatarInput" type="file" accept="image/*" class="hidden" />
+                    </div>
+                </div>
+                <label class="field-label" for="editGroupName">Group name</label>
+                <input id="editGroupName" class="setting-input" type="text" placeholder="Group name" />
+                <button id="saveGroupBtn" class="btn-primary" type="button">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== Folder modal ===================== -->
+    <div id="folderModal" class="modal-overlay hidden">
+        <div class="modal glass">
+            <header class="modal-header">
+                <h2 id="folderModalTitle">New folder</h2>
+                <button id="closeFolderModal" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <div class="modal-scroll">
+                <p class="folder-hint">Personal only — other users never see your folders.</p>
+                <label class="field-label" for="folderNameInput">Folder name</label>
+                <input id="folderNameInput" class="setting-input" type="text" placeholder="Work, Friends…" />
+                <label class="field-label">Chats (optional)</label>
+                <ul id="folderChatPickList" class="user-list folder-pick-list"></ul>
+                <button id="saveFolderBtn" class="btn-primary" type="button">Save folder</button>
+                <button id="deleteFolderBtn" class="btn-secondary danger-btn hidden" type="button" style="margin-top:10px;color:var(--danger);">Delete folder</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== Add to folder picker ===================== -->
+    <div id="addToFolderModal" class="modal-overlay hidden">
+        <div class="modal glass confirm-modal">
+            <header class="modal-header">
+                <h2>Add to folder</h2>
+                <button id="closeAddToFolder" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <ul id="addToFolderList" class="chat-options-list"></ul>
+            <p id="addToFolderEmpty" class="empty-hint hidden">No folders yet. Create one with + in the folder bar.</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

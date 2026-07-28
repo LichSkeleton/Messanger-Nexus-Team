@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RuleSet Name="Nexus Team StyleCop Rules" Description="StyleCop rules for Nexus Team project" ToolsVersion="16.0">
+  <Rules AnalyzerId="StyleCop.Analyzers" RuleNamespace="StyleCop.Analyzers">
+    <!-- SA1200: Using directives should be placed correctly (inside namespace) -->
+    <Rule Id="SA1200" Action="Warning" />
+    
+    <!-- SA1633: File should have header - Disabled -->
+    <Rule Id="SA1633" Action="None" />
+    
+    <!-- SA1309: Field names should not begin with underscore -->
+    <Rule Id="SA1309" Action="Warning" />
+    
+    <!-- SA1101: Prefix local calls with this -->
+    <Rule Id="SA1101" Action="Warning" />
+    
+    <!-- SA1649: File name should match first type name (one public type per file) -->
+    <Rule Id="SA1649" Action="Warning" />
+    
+    <!-- SA1201: Elements should appear in the correct order - Disabled for events after properties -->
+    <Rule Id="SA1201" Action="None" />
+    
+    <!-- SA1402: File may only contain a single type - Disabled for nested helper classes -->
+    <Rule Id="SA1402" Action="None" />
+  </Rules>
+</RuleSet>
