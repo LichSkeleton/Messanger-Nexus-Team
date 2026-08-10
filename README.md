@@ -81,15 +81,16 @@ docker compose down -v    # stop and wipe all database volumes (fresh start + re
 
 ## Demo accounts
 
-Every time the databases are seeded (from scratch), the seeder creates the same three users with a short chat history between them, so you can log in and try the app immediately without registering.
+Every time the databases are seeded (from scratch), the seeder creates the same four users with a short chat history between them, so you can log in and try the app immediately without registering.
 
 | Username | Password |
 |----------|----------|
-| `Pavalo` | `Aa123456` |
-| `Olen`   | `Aa123456` |
 | `Vlad`   | `Aa123456` |
+| `Sofia`  | `Aa123456` |
+| `Hakan`  | `Aa123456` |
+| `Anna`   | `Aa123456` |
 
-The seeded chats include two private conversations (Pavalo↔Olen and Pavalo↔Vlad) and one group chat (`NexusTeam Devs`) containing all three users.
+The seeded chats include four private conversations (Vlad↔Sofia, Hakan↔Anna, Sofia↔Anna, Vlad↔Hakan) and one group chat (`NexusTeam Devs`) containing all four users.
 
 > These demo accounts are recreated on every seed run. They're for local development only — do not ship them to production.
 
@@ -103,13 +104,15 @@ Everything below runs as a Docker container started by `docker compose up -d --b
 |---------|-----------|---------|
 | **Web client (Nginx)** | **`8080`** | **Responsive universal UI — open this in any browser** |
 | Server (.NET API) | `5251` | REST API + WebSocket (also reachable directly; Swagger via code) |
-| Oracle XE | `1530` | Users & authentication (`XEPDB1`) |
+| Oracle 23ai Free | `1530` | Users & authentication (`FREEPDB1`) |
 | MongoDB router (mongos) | `27018` | Messages, chats, attachments, preferences |
 | Redis | `6380` | Sessions, presence, cache, rate limiting |
 
 The browser only ever talks to the web client on port `8080`; Nginx reverse-proxies `/api` and `/ws` to the `server` container, so the app is same-origin and needs no extra configuration.
 
-**Default dev credentials** (Oracle): user `nexusteam_admin`, password `060707`, service `XEPDB1`. MongoDB and Redis have no auth in dev.
+**Default dev credentials** (Oracle): user `nexusteam_admin`, password `060707`, service `FREEPDB1`. MongoDB and Redis have no auth in dev.
+
+Every image is published for both `linux/amd64` and `linux/arm64`, so these exact commands work on Windows, Intel macOS, Apple Silicon and Linux. All host ports and passwords can be overridden by copying `Nexus-Team/.env.example` to `Nexus-Team/.env`.
 
 > These are development defaults only. Change all passwords and enable authentication before any production use — see [SECURITY.md](Nexus-Team/docs/SECURITY.md).
 
@@ -117,14 +120,15 @@ The browser only ever talks to the web client on port `8080`; Nginx reverse-prox
 
 ## Troubleshooting
 
-**`container nexusteam_oracle is unhealthy`** — Oracle starts fine but its healthcheck targets the wrong database. It must check `XEPDB1` (the PDB the seeder and server use); the compose file uses `healthcheck.sh XEPDB1`. If you previously created the volume with a different `ORACLE_DATABASE`, reset cleanly:
+**`container nexusteam_oracle is unhealthy`** — almost always too little memory. Oracle needs ~2 GB, so give Docker Desktop at least 6 GB under Settings → Resources. Check the reason with `docker compose logs oracle`. If the volume was created by an older Oracle XE checkout, its datafiles cannot be opened by 23ai; reset cleanly:
 
 ```bash
 docker compose down -v
-docker compose up -d
+docker volume rm nexusteam_oracle_data   # leftover from the old Oracle XE setup
+docker compose up -d --build
 ```
 
-**Port already in use** — free `8080`, `5251`, `1530`, `27018`, or `6380`, or change the host port (left side of the `ports:` mapping) in `Nexus-Team/docker-compose.yaml`.
+**Port already in use** — free `8080`, `5251`, `1530`, `27018`, or `6380`, or copy `Nexus-Team/.env.example` to `Nexus-Team/.env` and change the port there.
 
 **`http://localhost:8080` shows 502 Bad Gateway** — the API container is still starting. Wait for `docker compose ps` to show `server` as `healthy`, then refresh. On first launch the API build + Oracle startup can take a few minutes.
 
@@ -207,7 +211,7 @@ Messanger/
 | Server | ASP.NET Core | 8.0 |
 | Primary client | Responsive web SPA (HTML/CSS/JS) + Nginx | any modern browser |
 | Optional client | WPF desktop (Windows-only) | 8.0-windows |
-| User DB | Oracle Database | XE 21c |
+| User DB | Oracle Database | 23ai Free |
 | Message DB | MongoDB (sharded) | 7.x |
 | Cache/Sessions | Redis | 7.x |
 | Auth | JWT | - |

@@ -1,12 +1,26 @@
+# =============================================================================
+# NexusTeam - full stack for the web client.
+#
+#   docker compose up -d --build      then open http://localhost:8080
+#
+# Every image below is published for both linux/amd64 and linux/arm64, so the
+# same file runs unchanged on Windows, Intel macOS and Apple Silicon.
+# All host ports and credentials can be overridden through a .env file
+# (see .env.example); the defaults work out of the box.
+# =============================================================================
+# Pinned so the project name never depends on the folder the repo was cloned
+# into (which may contain non-ASCII characters on some machines).
+name: nexus-team
+
 services:
-  # ============================================================================
+  # ===========================================================================
   # Redis - Cache, Sessions, Presence
-  # ============================================================================
+  # ===========================================================================
   redis:
     image: redis:7-alpine
     container_name: nexusteam_redis
     ports:
-      - "6380:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -15,51 +29,72 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    stop_grace_period: 30s
+    restart: unless-stopped
     networks:
       - nexusteam_network
 
-  # ============================================================================
+  # ===========================================================================
   # Oracle Database - Users, Email Verifications
-  # ============================================================================
+  #
+  # Oracle Database 23ai Free. Unlike gvenzl/oracle-xe (amd64 only) this image
+  # is also built for arm64, so it runs natively on Apple Silicon instead of
+  # crawling through QEMU emulation. The "-faststart" variant ships with the
+  # database already created, which turns a ~4 minute first boot into ~30s.
+  #
+  # 23ai Free names its pluggable database FREEPDB1 (XE used XEPDB1).
+  # ===========================================================================
   oracle:
-    image: gvenzl/oracle-xe:21-slim
+    image: gvenzl/oracle-free:23-slim-faststart
     container_name: nexusteam_oracle
     ports:
-      - "1530:1521"
+      - "${ORACLE_PORT:-1530}:1521"
     environment:
-      ORACLE_PASSWORD: "060707"
-      APP_USER: nexusteam_admin
-      APP_USER_PASSWORD: "060707"
+      ORACLE_PASSWORD: "${ORACLE_SYS_PASSWORD:-060707}"
+      APP_USER: "${ORACLE_APP_USER:-nexusteam_admin}"
+      APP_USER_PASSWORD: "${ORACLE_APP_PASSWORD:-060707}"
     volumes:
       - oracle_data:/opt/oracle/oradata
+    # Oracle allocates its SGA in shared memory. Docker's 64 MB default makes
+    # the instance fail to start with ORA-00845 on some hosts.
+    shm_size: "1gb"
+    # An Oracle instance that gets SIGKILLed mid-write can leave the datafiles
+    # in a state it refuses to open on the next boot.
+    stop_grace_period: 120s
     healthcheck:
-      test: [ "CMD-SHELL", "healthcheck.sh XEPDB1" ]
-      interval: 30s
+      test: [ "CMD", "healthcheck.sh" ]
+      interval: 10s
       timeout: 10s
-      retries: 10
-      start_period: 60s
+      retries: 40
+      start_period: 30s
+    restart: unless-stopped
     networks:
       - nexusteam_network
 
-  # ============================================================================
+  # ===========================================================================
   # MongoDB Sharded Cluster - Chats, Messages, Attachments, User Preferences
-  # ============================================================================
+  #
+  # Only the mongos router publishes a host port; the config server and the
+  # shards are reachable inside the compose network and via `docker exec`,
+  # which keeps three fewer ports available for conflicts on teammates' hosts.
+  # ===========================================================================
 
   # Config Server (Replica Set)
   mongo-config:
     image: mongo:7
     container_name: nexusteam_mongo_config
     command: mongod --configsvr --replSet configReplSet --port 27017 --dbpath /data/db --bind_ip_all
-    ports:
-      - "27019:27017"
     volumes:
       - mongo_config_data:/data/db
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 20s
+    stop_grace_period: 60s
+    restart: unless-stopped
     networks:
       - nexusteam_network
 
@@ -68,16 +103,16 @@ services:
     image: mongo:7
     container_name: nexusteam_mongo_shard1
     command: mongod --shardsvr --replSet shard1ReplSet --port 27017 --dbpath /data/db --bind_ip_all
-    ports:
-      - "27020:27017"
     volumes:
       - mongo_shard1_data:/data/db
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 20s
+    stop_grace_period: 60s
+    restart: unless-stopped
     networks:
       - nexusteam_network
 
@@ -86,16 +121,16 @@ services:
     image: mongo:7
     container_name: nexusteam_mongo_shard2
     command: mongod --shardsvr --replSet shard2ReplSet --port 27017 --dbpath /data/db --bind_ip_all
-    ports:
-      - "27021:27017"
     volumes:
       - mongo_shard2_data:/data/db
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 20s
+    stop_grace_period: 60s
+    restart: unless-stopped
     networks:
       - nexusteam_network
 
@@ -115,73 +150,38 @@ services:
       - -c
       - |
         set -e
-        echo "Initializing Config Server Replica Set..."
-        mongosh --host mongo-config:27017 --eval "
-          try {
-            rs.initiate({
-              _id: 'configReplSet',
-              configsvr: true,
-              members: [{ _id: 0, host: 'mongo-config:27017' }]
-            })
-            print('Config Server initialized')
-          } catch (e) {
-            if (e.message.includes('already') || e.codeName === 'AlreadyInitialized') {
-              print('Config Server already initialized')
-            } else {
-              throw e
+
+        init_replica_set() {
+          local host="$$1" label="$$2" config="$$3"
+          echo "Initializing $$label..."
+          mongosh --host "$$host" --quiet --eval "
+            try {
+              rs.initiate($$config)
+              print('$$label initialized')
+            } catch (e) {
+              if (e.codeName === 'AlreadyInitialized' || /already/i.test(e.message)) {
+                print('$$label already initialized')
+              } else {
+                throw e
+              }
             }
-          }
-        "
+          "
+          echo "Waiting for $$label to elect a primary..."
+          until mongosh --host "$$host" --quiet --eval "rs.isMaster().ismaster" | grep -q 'true'; do
+            sleep 2
+          done
+          echo "$$label is primary"
+        }
 
-        echo " Waiting for Config Server to be primary..."
-        until mongosh --host mongo-config:27017 --quiet --eval "rs.isMaster().ismaster" | grep -q 'true'; do
-          sleep 2
-        done
-
-        echo "Initializing Shard 1 Replica Set..."
-        mongosh --host mongo-shard1:27017 --eval "
-          try {
-            rs.initiate({
-              _id: 'shard1ReplSet',
-              members: [{ _id: 0, host: 'mongo-shard1:27017' }]
-            })
-            print('Shard 1 initialized')
-          } catch (e) {
-            if (e.message.includes('already') || e.codeName === 'AlreadyInitialized') {
-              print('Shard 1 already initialized')
-            } else {
-              throw e
-            }
-          }
-        "
-        echo "Waiting for Shard 1 to be primary..."
-        until mongosh --host mongo-shard1:27017 --quiet --eval "rs.isMaster().ismaster" | grep -q 'true'; do
-          sleep 2
-        done
-
-        echo "Initializing Shard 2 Replica Set..."
-        mongosh --host mongo-shard2:27017 --eval "
-          try {
-            rs.initiate({
-              _id: 'shard2ReplSet',
-              members: [{ _id: 0, host: 'mongo-shard2:27017' }]
-            })
-            print('Shard 2 initialized')
-          } catch (e) {
-            if (e.message.includes('already') || e.codeName === 'AlreadyInitialized') {
-              print('Shard 2 already initialized')
-            } else {
-              throw e
-            }
-          }
-        "
-
-        echo "Waiting for Shard 2 to be primary..."
-        until mongosh --host mongo-shard2:27017 --quiet --eval "rs.isMaster().ismaster" | grep -q 'true'; do
-          sleep 2
-        done
+        init_replica_set mongo-config:27017 'Config Server' \
+          "{ _id: 'configReplSet', configsvr: true, members: [{ _id: 0, host: 'mongo-config:27017' }] }"
+        init_replica_set mongo-shard1:27017 'Shard 1' \
+          "{ _id: 'shard1ReplSet', members: [{ _id: 0, host: 'mongo-shard1:27017' }] }"
+        init_replica_set mongo-shard2:27017 'Shard 2' \
+          "{ _id: 'shard2ReplSet', members: [{ _id: 0, host: 'mongo-shard2:27017' }] }"
 
         echo "All replica sets initialized successfully!"
+    restart: "no"
     networks:
       - nexusteam_network
 
@@ -191,22 +191,18 @@ services:
     container_name: nexusteam_mongos
     command: mongos --configdb configReplSet/mongo-config:27017 --port 27017 --bind_ip_all
     ports:
-      - "27018:27017"
+      - "${MONGO_PORT:-27018}:27017"
     depends_on:
       mongo-init:
         condition: service_completed_successfully
-      mongo-config:
-        condition: service_healthy
-      mongo-shard1:
-        condition: service_healthy
-      mongo-shard2:
-        condition: service_healthy
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 20s
+    stop_grace_period: 60s
+    restart: unless-stopped
     networks:
       - nexusteam_network
 
@@ -222,13 +218,8 @@ services:
       - -c
       - |
         set -e
-        echo "Waiting for mongos to be ready..."
-        until mongosh --host mongos:27017 --quiet --eval "db.adminCommand('ping').ok" | grep -q '1'; do
-          sleep 2
-        done
-
         echo "Registering shards with mongos..."
-        mongosh --host mongos:27017 --eval "
+        mongosh --host mongos:27017 --quiet --eval "
           const existing = db.adminCommand({ listShards: 1 }).shards.map(s => s._id);
           function addShard(name, host) {
             if (existing.includes(name)) {
@@ -236,28 +227,33 @@ services:
               return;
             }
             const result = sh.addShard(host);
-            if (result.ok) {
-              print('Added ' + name);
-            } else {
+            if (!result.ok) {
               throw new Error(JSON.stringify(result));
             }
+            print('Added ' + name);
           }
           addShard('shard1ReplSet', 'shard1ReplSet/mongo-shard1:27017');
           addShard('shard2ReplSet', 'shard2ReplSet/mongo-shard2:27017');
-          sh.enableSharding('NexusTeam');
+          sh.enableSharding('${MONGO_DATABASE:-NexusTeam}');
         "
-
         echo "MongoDB router initialization complete!"
+    restart: "no"
     networks:
       - nexusteam_network
 
-  # ============================================================================
-  # Database Seeder - C# Console Application
-  # ============================================================================
+  # ===========================================================================
+  # Database Seeder - creates schemas, indexes, sharding and demo accounts.
+  #
+  # Runs to completion once; the server waits for its exit code 0. It has no
+  # restart policy on purpose: a restarting one-shot container races with
+  # compose's service_completed_successfully check. Transient database hiccups
+  # are handled by the seeder's own Polly retry loop instead.
+  # ===========================================================================
   db-seeder:
     build:
       context: .
       dockerfile: src/NexusTeam.DbSeeder/Dockerfile
+    image: nexusteam/db-seeder:local
     container_name: nexusteam_db_seeder
     depends_on:
       oracle:
@@ -267,85 +263,91 @@ services:
       redis:
         condition: service_healthy
     environment:
-      # MongoDB Configuration
       MONGODB_CONNECTION_STRING: "mongodb://mongos:27017"
-      MONGODB_DATABASE: "NexusTeam"
-
-      # Oracle Configuration (FIXED HOST NAME)
-      ORACLE_CONNECTION_STRING: "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)));User Id=nexusteam_admin;Password=060707;"
-
-      # Redis Configuration (FIXED HOST NAME)
+      MONGODB_DATABASE: "${MONGO_DATABASE:-NexusTeam}"
+      ORACLE_CONNECTION_STRING: "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SERVICE:-FREEPDB1})));User Id=${ORACLE_APP_USER:-nexusteam_admin};Password=${ORACLE_APP_PASSWORD:-060707};"
       REDIS_CONNECTION_STRING: "redis:6379,abortConnect=false,allowAdmin=true"
-
-      # Seeder Configuration
       CONFIG_PATH: "/app/configs"
-      RETRY_COUNT: "10"
+      # 30 x 5s covers a slow Oracle PDB open without ever failing the stack.
+      RETRY_COUNT: "30"
       RETRY_DELAY_SECONDS: "5"
       ENABLE_SHARDING: "true"
       SHARD_COLLECTIONS: "messages,attachments"
     volumes:
-      # Mount config directory as volume for hot-reload
       - ./config:/app/configs:ro
+    restart: "no"
     networks:
       - nexusteam_network
-    restart: on-failure
 
-  # ============================================================================
+  # ===========================================================================
   # NexusTeam Web API (.NET 8) - REST + WebSocket backend
-  # ============================================================================
+  # ===========================================================================
   server:
     build:
       context: .
       dockerfile: src/NexusTeam.Server/Dockerfile
+    image: nexusteam/server:local
     container_name: nexusteam_server
     depends_on:
-      oracle:
-        condition: service_healthy
-      mongos:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       db-seeder:
         condition: service_completed_successfully
     environment:
-      # Point the server at the in-network database containers (override appsettings)
-      Oracle__ConnectionString: "User Id=nexusteam_admin;Password=060707;Data Source=oracle:1521/XEPDB1"
+      Oracle__ConnectionString: "User Id=${ORACLE_APP_USER:-nexusteam_admin};Password=${ORACLE_APP_PASSWORD:-060707};Data Source=oracle:1521/${ORACLE_SERVICE:-FREEPDB1}"
       MongoDB__ConnectionString: "mongodb://mongos:27017"
-      MongoDB__DatabaseName: "NexusTeam"
+      MongoDB__DatabaseName: "${MONGO_DATABASE:-NexusTeam}"
       Redis__ConnectionString: "redis:6379,abortConnect=false,allowAdmin=true"
-      # Allow the browser client (served by Nginx) as a CORS origin
-      Cors__AllowedOrigins__0: "http://localhost:8080"
+      Jwt__SecretKey: "${JWT_SECRET:-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6}"
+      # The browser talks to the API through the Nginx reverse proxy on the
+      # same origin, so this only matters for clients hitting 5251 directly.
+      Cors__AllowedOrigins__0: "http://localhost:${WEB_PORT:-8080}"
       ASPNETCORE_ENVIRONMENT: "Production"
     ports:
-      - "5251:5251"
+      - "${SERVER_PORT:-5251}:5251"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:5251/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 30s
+    restart: unless-stopped
     networks:
       - nexusteam_network
-    restart: on-failure
 
-  # ============================================================================
-  # NexusTeam Web Frontend (Nginx) - responsive universal client
-  # Serves the SPA and reverse-proxies /api and /ws to the server container.
-  # Open http://localhost:8080 on any device (desktop or mobile browser).
-  # ============================================================================
+  # ===========================================================================
+  # NexusTeam Web Frontend (Nginx) - the responsive universal client.
+  # Serves the SPA and reverse-proxies /api and /ws to the server container,
+  # so the whole app is same-origin. Open http://localhost:8080 on any device.
+  # ===========================================================================
   web:
     build:
       context: ./web
       dockerfile: Dockerfile
+    image: nexusteam/web:local
     container_name: nexusteam_web
     depends_on:
       server:
         condition: service_healthy
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/healthz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 15s
+    restart: unless-stopped
     networks:
       - nexusteam_network
-    restart: on-failure
 
 volumes:
   redis_data:
     name: nexusteam_redis_data
+  # Named separately from the old XE volume: Oracle 23ai cannot open datafiles
+  # created by XE 21, so a stale volume would break every start.
   oracle_data:
-    name: nexusteam_oracle_data
+    name: nexusteam_oracle_free_data
   mongo_config_data:
     name: nexusteam_mongo_config_data
   mongo_shard1_data:

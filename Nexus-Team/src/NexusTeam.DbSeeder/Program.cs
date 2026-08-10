@@ -150,9 +150,10 @@ public class Program
             }
             Console.WriteLine();
             Console.WriteLine("Demo accounts (password for all: " + DataSeeder.DemoPassword + "):");
-            Console.WriteLine("  - Pavalo");
-            Console.WriteLine("  - Olen");
             Console.WriteLine("  - Vlad");
+            Console.WriteLine("  - Sofia");
+            Console.WriteLine("  - Hakan");
+            Console.WriteLine("  - Anna");
             Console.WriteLine();
 
             return 0;

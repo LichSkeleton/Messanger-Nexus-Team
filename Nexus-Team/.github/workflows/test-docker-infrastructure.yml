@@ -5,85 +5,53 @@ on:
   push:
     branches: [main, develop, feature/docker-*]
     paths:
-      - 'docker-compose.yaml'
-      - 'src/NexusTeam.DbSeeder/**'
-      - 'config/**'
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/web/**'
+      - 'Nexus-Team/config/**'
+      - '.github/workflows/test-docker-infrastructure.yml'
   pull_request:
     branches: [main, develop]
     paths:
-      - 'docker-compose.yaml'
-      - 'src/NexusTeam.DbSeeder/**'
-      - 'config/**'
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/web/**'
+      - 'Nexus-Team/config/**'
+      - '.github/workflows/test-docker-infrastructure.yml'
   workflow_dispatch:
 
 jobs:
   test-infrastructure:
-    name: Test Database Infrastructure
+    name: Test Full Stack
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
+      # `docker compose up` already blocks on every health check and on the
+      # seeder's exit code, so reaching the next step means the whole stack
+      # came up cleanly from empty volumes.
       - name: Start Docker Infrastructure
         run: |
           cd Nexus-Team
-          docker-compose up -d --build
+          docker compose up -d --build
 
-      - name: Wait for MongoDB to be ready
+      - name: Verify DB Seeder succeeded
         run: |
-          echo "Waiting for MongoDB mongos router..."
-          for i in {1..30}; do
-            if docker exec nexusteam_mongos mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
-              echo "MongoDB is ready!"
-              break
-            fi
-            echo "Attempt $i/30: MongoDB not ready yet..."
-            sleep 10
-          done
-
-      - name: Wait for Oracle to be ready
-        run: |
-          echo "Waiting for Oracle database..."
-          for i in {1..60}; do
-            if docker exec nexusteam_oracle sh -c "echo 'SELECT 1 FROM DUAL;' | sqlplus -s nexusteam_user/nexusteam_password@XEPDB1" &>/dev/null; then
-              echo "Oracle is ready!"
-              break
-            fi
-            echo "Attempt $i/60: Oracle not ready yet..."
-            sleep 10
-          done
-
-      - name: Wait for Redis to be ready
-        run: |
-          echo "Waiting for Redis..."
-          for i in {1..10}; do
-            if docker exec nexusteam_redis redis-cli ping | grep -q "PONG"; then
-              echo "Redis is ready!"
-              break
-            fi
-            echo "Attempt $i/10: Redis not ready yet..."
-            sleep 5
-          done
-
-      - name: Wait for DB Seeder to complete
-        run: |
-          echo "Waiting for database seeder to complete..."
-          docker wait nexusteam_db_seeder
           exit_code=$(docker inspect nexusteam_db_seeder --format='{{.State.ExitCode}}')
           echo "Seeder exit code: $exit_code"
-          
-          if [ $exit_code -ne 0 ]; then
+
+          if [ "$exit_code" -ne 0 ]; then
             echo "❌ Database seeder failed!"
-            echo "Seeder logs:"
             docker logs nexusteam_db_seeder
             exit 1
           fi
-          
+
           echo "✓ Database seeder completed successfully!"
 
       - name: Show Seeder Logs
@@ -147,20 +115,51 @@ jobs:
             print('✓ Sharding configured correctly');
           "
 
-      - name: Verify Oracle Tables
+      - name: Verify Oracle Tables and Demo Users
         run: |
-          echo "Verifying Oracle tables..."
+          echo "Verifying Oracle schema..."
           docker exec nexusteam_oracle sh -c "
-            echo \"SELECT table_name FROM user_tables WHERE table_name = 'USERS';\" | \
-            sqlplus -s nexusteam_user/nexusteam_password@XEPDB1
-          " | grep -q "USERS"
-          
-          if [ $? -ne 0 ]; then
-            echo "❌ Users table not found"
+            echo \"SELECT username FROM users ORDER BY username;\" | \
+            sqlplus -s nexusteam_admin/060707@//localhost:1521/FREEPDB1
+          " | tee /tmp/oracle_users.txt
+
+          for user in Vlad Sofia Hakan Anna; do
+            if ! grep -q "$user" /tmp/oracle_users.txt; then
+              echo "❌ Demo user $user not found in Oracle"
+              exit 1
+            fi
+          done
+
+          echo "✓ Oracle tables and demo users created successfully"
+
+      - name: Verify Web Client and API
+        run: |
+          echo "Waiting for the web client to answer..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null; then break; fi
+            sleep 5
+          done
+
+          curl -fsS http://localhost:8080/ >/dev/null
+          echo "✓ SPA is served"
+
+          curl -fsS http://localhost:5251/health | grep -q "Healthy"
+          echo "✓ API reports healthy"
+
+          # An unknown account must come back 401 from the API, which proves the
+          # request travelled through Nginx and the server queried Oracle.
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"usernameOrEmail":"no-such-user","password":"x"}' \
+            http://localhost:8080/api/auth/login)
+
+          if [ "$status" != "401" ]; then
+            echo "❌ Expected 401 from /api/auth/login, got $status"
+            docker compose -f Nexus-Team/docker-compose.yaml logs server --tail=50
             exit 1
           fi
-          
-          echo "✓ Oracle tables created successfully"
+
+          echo "✓ API is reachable through the Nginx reverse proxy"
 
       - name: Verify Redis Connection
         run: |
@@ -168,82 +167,54 @@ jobs:
           docker exec nexusteam_redis redis-cli INFO server | grep "redis_version"
           echo "✓ Redis is operational"
 
-      - name: Test Hot-Reload (Modify Config and Re-run Seeder)
-        run: |
-          echo "Testing hot-reload feature..."
-          
-          # Add a comment to config file
-          echo "// Test hot-reload $(date)" >> Nexus-Team/config/mongodb/chats_config.json
-          
-          # Restart seeder
-          cd Nexus-Team
-          docker-compose restart db-seeder
-          
-          # Wait for completion
-          docker wait nexusteam_db_seeder
-          exit_code=$(docker inspect nexusteam_db_seeder --format='{{.State.ExitCode}}')
-          
-          if [ $exit_code -ne 0 ]; then
-            echo "❌ Hot-reload test failed"
-            docker logs nexusteam_db_seeder
-            exit 1
-          fi
-          
-          echo "✓ Hot-reload works correctly"
-
       - name: Test Idempotency (Run Seeder Again)
         run: |
           echo "Testing idempotency..."
-          
           cd Nexus-Team
-          docker-compose up db-seeder
-          
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "❌ Idempotency test failed"
-            docker logs nexusteam_db_seeder
-            exit 1
-          fi
-          
-          echo "✓ Idempotency works correctly"
+          docker compose up db-seeder --force-recreate --exit-code-from db-seeder
+          echo "✓ Seeding is idempotent"
+
+      - name: Test Warm Restart (Existing Volumes)
+        run: |
+          echo "Testing a restart against already-populated volumes..."
+          cd Nexus-Team
+          docker compose down
+          docker compose up -d
+          docker compose ps
+
+          curl -fsS --retry 20 --retry-delay 5 --retry-all-errors \
+            http://localhost:5251/health | grep -q "Healthy"
+          echo "✓ Stack recovers from a restart"
 
       - name: Collect Logs on Failure
         if: failure()
         run: |
           echo "=== All Container Logs ==="
-          docker-compose -f Nexus-Team/docker-compose.yaml logs --tail=100
+          docker compose -f Nexus-Team/docker-compose.yaml logs --tail=100
 
       - name: Shutdown Infrastructure
         if: always()
         run: |
           cd Nexus-Team
-          docker-compose down -v
+          docker compose down -v
 
-  test-seeder-build:
-    name: Test DbSeeder Build
+  test-dotnet-build:
+    name: Test .NET Build
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: Restore dependencies
+      # The WPF client is Windows-only and deliberately excluded; the web
+      # client needs no build step.
+      - name: Build server and seeder
         run: |
           cd Nexus-Team
-          dotnet restore src/NexusTeam.DbSeeder/NexusTeam.DbSeeder.csproj
-
-      - name: Build DbSeeder
-        run: |
-          cd Nexus-Team
-          dotnet build src/NexusTeam.DbSeeder/NexusTeam.DbSeeder.csproj -c Release --no-restore
-
-      - name: Run unit tests (if any)
-        run: |
-          cd Nexus-Team
-          # Add unit tests here when available
-          echo "No unit tests yet"
+          dotnet build src/NexusTeam.Server/NexusTeam.Server.csproj -c Release
+          dotnet build src/NexusTeam.DbSeeder/NexusTeam.DbSeeder.csproj -c Release

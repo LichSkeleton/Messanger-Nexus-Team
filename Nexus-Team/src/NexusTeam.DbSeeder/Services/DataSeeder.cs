@@ -7,7 +7,7 @@ namespace NexusTeam.DbSeeder.Services;
 
 /// <summary>
 /// Seeds a small, deterministic set of demo data: a fixed group of users
-/// (Pavalo, Olen, Vlad) and a short chat history between them.
+/// (Vlad, Sofia, Hakan, Anna) and a short chat history between them.
 /// Runs "from scratch" every time - existing seed entities are removed and
 /// recreated so the demo data is always identical and ready to log in with.
 /// </summary>
@@ -25,9 +25,10 @@ public class DataSeeder
 
     private static readonly DemoUser[] Users =
     {
-        new("seed-user-pavalo", "Pavalo", "pavalo@nexusteam.dev", "Pavalo"),
-        new("seed-user-olen", "Olen", "olen@nexusteam.dev", "Olen"),
         new("seed-user-vlad", "Vlad", "vlad@nexusteam.dev", "Vlad"),
+        new("seed-user-sofia", "Sofia", "sofia@nexusteam.dev", "Sofia"),
+        new("seed-user-hakan", "Hakan", "hakan@nexusteam.dev", "Hakan"),
+        new("seed-user-anna", "Anna", "anna@nexusteam.dev", "Anna"),
     };
 
     public DataSeeder(
@@ -65,6 +66,14 @@ public class DataSeeder
 
         using var connection = new OracleConnection(this.oracleConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        // Also clear previous demo usernames that are no longer seeded.
+        using (var cleanupCommand = new OracleCommand(
+            "DELETE FROM users WHERE id LIKE 'seed-user-%' OR username IN ('Pavalo', 'Olen')",
+            connection))
+        {
+            await cleanupCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
 
         foreach (var user in Users)
         {
@@ -107,57 +116,90 @@ public class DataSeeder
         var chats = database.GetCollection<BsonDocument>("chats");
         var messages = database.GetCollection<BsonDocument>("messages");
 
-        var pavalo = Users[0].Id;
-        var olen = Users[1].Id;
-        var vlad = Users[2].Id;
+        var vlad = Users[0].Id;
+        var sofia = Users[1].Id;
+        var hakan = Users[2].Id;
+        var anna = Users[3].Id;
 
         var baseTime = DateTime.UtcNow.AddHours(-3);
 
         var seededChats = new[]
         {
             new SeedChat(
-                "seed-chat-pavalo-olen",
-                "Pavalo & Olen",
+                "seed-chat-vlad-sofia",
+                "Vlad & Sofia",
                 "private",
-                new[] { pavalo, olen },
-                pavalo,
+                new[] { vlad, sofia },
+                vlad,
                 new[]
                 {
-                    new SeedMessage("seed-msg-po-1", pavalo, "Hey Olen, did you check the new build?"),
-                    new SeedMessage("seed-msg-po-2", olen, "Yeah, looks great! The chat is finally real-time."),
-                    new SeedMessage("seed-msg-po-3", pavalo, "Awesome, let's demo it tomorrow."),
+                    new SeedMessage("seed-msg-vs-1", vlad, "Hey Sofia, ready for the project demo?"),
+                    new SeedMessage("seed-msg-vs-2", sofia, "Almost! Just polishing the UI a bit."),
+                    new SeedMessage("seed-msg-vs-3", vlad, "Nice — ping me when you push."),
                 }),
             new SeedChat(
-                "seed-chat-pavalo-vlad",
-                "Pavalo & Vlad",
+                "seed-chat-hakan-anna",
+                "Hakan & Anna",
                 "private",
-                new[] { pavalo, vlad },
-                pavalo,
+                new[] { hakan, anna },
+                hakan,
                 new[]
                 {
-                    new SeedMessage("seed-msg-pv-1", vlad, "Pavalo, can you review my PR?"),
-                    new SeedMessage("seed-msg-pv-2", pavalo, "Sure, sending comments now."),
+                    new SeedMessage("seed-msg-ha-1", hakan, "Anna, did the Mongo indexes look okay?"),
+                    new SeedMessage("seed-msg-ha-2", anna, "Yes, queries are much faster now."),
+                    new SeedMessage("seed-msg-ha-3", hakan, "Perfect, thanks!"),
+                }),
+            new SeedChat(
+                "seed-chat-sofia-anna",
+                "Sofia & Anna",
+                "private",
+                new[] { sofia, anna },
+                sofia,
+                new[]
+                {
+                    new SeedMessage("seed-msg-sa-1", sofia, "Want to grab coffee after standup?"),
+                    new SeedMessage("seed-msg-sa-2", anna, "Sure! Meet you in the lobby."),
+                }),
+            new SeedChat(
+                "seed-chat-vlad-hakan",
+                "Vlad & Hakan",
+                "private",
+                new[] { vlad, hakan },
+                vlad,
+                new[]
+                {
+                    new SeedMessage("seed-msg-vh-1", hakan, "Vlad, can you review my API PR?"),
+                    new SeedMessage("seed-msg-vh-2", vlad, "On it — leaving comments shortly."),
                 }),
             new SeedChat(
                 "seed-chat-team",
                 "NexusTeam Devs",
                 "group",
-                new[] { pavalo, olen, vlad },
-                pavalo,
+                new[] { vlad, sofia, hakan, anna },
+                vlad,
                 new[]
                 {
-                    new SeedMessage("seed-msg-team-1", pavalo, "Welcome to NexusTeam, everyone!"),
-                    new SeedMessage("seed-msg-team-2", olen, "Glad to be here."),
-                    new SeedMessage("seed-msg-team-3", vlad, "Let's build something great."),
-                    new SeedMessage("seed-msg-team-4", pavalo, "First standup is at 10:00."),
+                    new SeedMessage("seed-msg-team-1", vlad, "Welcome to NexusTeam, everyone!"),
+                    new SeedMessage("seed-msg-team-2", sofia, "Excited to ship this together."),
+                    new SeedMessage("seed-msg-team-3", hakan, "Backend is ready for the first demo."),
+                    new SeedMessage("seed-msg-team-4", anna, "Same here — data layer looks solid."),
+                    new SeedMessage("seed-msg-team-5", vlad, "Great. Standup at 10:00."),
                 }),
         };
 
         var chatIds = seededChats.Select(c => c.Id).ToList();
 
+        // Also remove chats from the previous demo cast so leftovers don't linger.
+        var legacyChatIds = new[]
+        {
+            "seed-chat-pavalo-olen",
+            "seed-chat-pavalo-vlad",
+        };
+        var allChatIdsToDelete = chatIds.Concat(legacyChatIds).ToList();
+
         // Remove any previous copies so seeding is deterministic ("from scratch").
-        await chats.DeleteManyAsync(Builders<BsonDocument>.Filter.In("_id", chatIds), cancellationToken);
-        await messages.DeleteManyAsync(Builders<BsonDocument>.Filter.In("chatId", chatIds), cancellationToken);
+        await chats.DeleteManyAsync(Builders<BsonDocument>.Filter.In("_id", allChatIdsToDelete), cancellationToken);
+        await messages.DeleteManyAsync(Builders<BsonDocument>.Filter.In("chatId", allChatIdsToDelete), cancellationToken);
 
         var messageTime = baseTime;
         foreach (var chat in seededChats)

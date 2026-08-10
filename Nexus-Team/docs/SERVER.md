@@ -836,7 +836,7 @@ The `appsettings.json` is pre-configured for Docker:
 ```json
 {
   "Oracle": {
-    "ConnectionString": "User Id=nexusteam_admin;Password=060707;Data Source=localhost:1530/XEPDB1"
+    "ConnectionString": "User Id=nexusteam_admin;Password=060707;Data Source=localhost:1530/FREEPDB1"
   },
   "MongoDB": {
     "ConnectionString": "mongodb://localhost:27018",

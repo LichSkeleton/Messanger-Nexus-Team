@@ -45,8 +45,10 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
 
 EXPOSE 5251
 
+# 127.0.0.1 rather than "localhost": Kestrel listens on IPv4 only, so a
+# localhost that resolves to ::1 first would fail the check.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=10 \
-    CMD curl -fsS http://localhost:5251/health || exit 1
+    CMD curl -fsS http://127.0.0.1:5251/health || exit 1
 
 # The server takes the listening port as its single CLI argument.
 ENTRYPOINT ["dotnet", "nexus-team-server.dll", "5251"]

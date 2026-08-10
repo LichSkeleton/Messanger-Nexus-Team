@@ -89,7 +89,7 @@ docker-compose up -d
 ```
 
 **What this starts:**
-- **Oracle XE 21c** - User database (port 1530)
+- **Oracle Database 23ai Free** - User database (port 1530)
 - **MongoDB Sharded Cluster** - Message/chat database (port 27018)
 - **Redis** - Cache and sessions (port 6380)
 - **Database Seeder** - Automatically creates tables, collections, and indexes
@@ -134,7 +134,7 @@ mongosh mongodb://localhost:27018
 **Check Oracle:**
 ```bash
 # Using SQL*Plus or Oracle SQL Developer
-# Connection: localhost:1530/XEPDB1
+# Connection: localhost:1530/FREEPDB1
 # User: nexusteam_admin
 # Password: 060707
 ```
@@ -156,7 +156,7 @@ The `src/NexusTeam.Server/appsettings.json` is **already pre-configured** for Do
 ```json
 {
   "Oracle": {
-    "ConnectionString": "User Id=nexusteam_admin;Password=060707;Data Source=localhost:1530/XEPDB1",
+    "ConnectionString": "User Id=nexusteam_admin;Password=060707;Data Source=localhost:1530/FREEPDB1",
     "CommandTimeout": 30,
     "MaxRetryAttempts": 3
   },
@@ -290,7 +290,7 @@ show collections
 **Oracle:**
 ```sql
 -- Connect as nexusteam_admin
-sqlplus nexusteam_admin/060707@localhost:1530/XEPDB1
+sqlplus nexusteam_admin/060707@localhost:1530/FREEPDB1
 
 -- Check users table exists
 SELECT COUNT(*) FROM users;
@@ -500,7 +500,7 @@ docker-compose exec [service_name] [command]
 
 **Oracle:**
 - Host: `localhost:1530`
-- Service: `XEPDB1`
+- Service: `FREEPDB1`
 - User: `nexusteam_admin`
 - Password: `060707`
 

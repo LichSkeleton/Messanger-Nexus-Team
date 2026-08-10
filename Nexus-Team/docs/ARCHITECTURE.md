@@ -698,7 +698,7 @@ DELETE /chat-folders/{id}      - Delete folder
 ```
 Developer Machine
 ├── Docker Desktop / Docker Engine
-│   ├── Oracle XE 21c (Container)
+│   ├── Oracle Database 23ai Free (Container)
 │   ├── MongoDB Sharded Cluster (Containers)
 │   │   ├── Config Server
 │   │   ├── Shard 1
@@ -717,7 +717,7 @@ Developer Machine
 - Automatic database initialization via seeder
 
 **Connection Details:**
-- Oracle: `localhost:1530/XEPDB1`
+- Oracle: `localhost:1530/FREEPDB1`
 - MongoDB: `mongodb://localhost:27018`
 - Redis: `localhost:6380`
 
@@ -753,7 +753,7 @@ Developer Machine
 ├─────────────────────────────────────────────────┤
 │                                                  │
 │  ┌──────────────┐  ┌──────────────┐           │
-│  │   Oracle XE  │  │    Redis      │           │
+│  │  Oracle 23ai │  │    Redis      │           │
 │  │   Port: 1530  │  │  Port: 6380   │           │
 │  └──────────────┘  └──────────────┘           │
 │                                                  │

@@ -12,6 +12,6 @@ Then open **http://localhost:8080** in any browser (desktop or mobile). The web 
 
 Stop with `docker compose down` (add `-v` to also wipe the databases).
 
-**Demo logins** (password for all: `Aa123456`): `Pavalo`, `Olen`, `Vlad` — see [Demo accounts](../README.md#demo-accounts) in the root README.
+**Demo logins** (password for all: `Aa123456`): `Vlad`, `Sofia`, `Hakan`, `Anna` — see [Demo accounts](../README.md#demo-accounts) in the root README.
 
 > The WPF desktop client (`src/NexusTeam.Client`, Windows-only) is still available for development, but it is no longer required to use the app.
