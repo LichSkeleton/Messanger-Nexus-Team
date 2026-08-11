@@ -1,0 +1,78 @@
+name: Docker Desktop Host Matrix
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-desktop-host-matrix
+  cancel-in-progress: false
+
+jobs:
+  desktop-integration:
+    name: Full stack / ${{ matrix.name }}
+    if: vars.ENABLE_DOCKER_DESKTOP_RUNNERS == 'true'
+    runs-on: ${{ fromJSON(matrix.runner_labels) }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner_labels: '["self-hosted","Windows","X64","docker-desktop"]'
+            arch: amd64
+          - name: Windows ARM64
+            runner_labels: '["self-hosted","Windows","ARM64","docker-desktop"]'
+            arch: arm64
+          - name: macOS Intel
+            runner_labels: '["self-hosted","macOS","X64","docker-desktop"]'
+            arch: amd64
+          - name: macOS Apple Silicon
+            runner_labels: '["self-hosted","macOS","ARM64","docker-desktop"]'
+            arch: arm64
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Verify Docker Desktop
+        run: |
+          docker version
+          docker compose version
+          docker info --format '{{.OSType}}/{{.Architecture}}'
+
+      - name: Clean previous CI state
+        working-directory: Nexus-Team
+        run: docker compose down --volumes --remove-orphans || true
+
+      - name: Validate Compose model
+        working-directory: Nexus-Team
+        run: docker compose config --quiet
+
+      - name: Build and start the full stack
+        working-directory: Nexus-Team
+        run: docker compose up --detach --build
+
+      - name: Verify databases, cache, API and web client
+        working-directory: Nexus-Team
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: bash scripts/verify-docker-stack.sh
+
+      - name: Collect logs on failure
+        if: failure()
+        working-directory: Nexus-Team
+        run: docker compose logs --no-color --tail=200
+
+      - name: Shut down infrastructure
+        if: always()
+        working-directory: Nexus-Team
+        run: docker compose down --volumes --remove-orphans

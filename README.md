@@ -258,6 +258,7 @@ See [ARCHITECTURE.md](Nexus-Team/docs/ARCHITECTURE.md) for the full design.
 | [Installation](Nexus-Team/docs/INSTALLATION.md) | Full setup, verification, and troubleshooting |
 | [Architecture](Nexus-Team/docs/ARCHITECTURE.md) | System design, data model, communication protocols |
 | [Server](Nexus-Team/docs/SERVER.md) | Server internals and configuration |
+| [Docker CI](Nexus-Team/docs/DOCKER_CI.md) | Multi-architecture CI and Docker Desktop runner setup |
 | [Client](Nexus-Team/docs/CLIENT.md) | Client internals and configuration |
 | [Docker](Nexus-Team/docs/Docker.md) | Docker infrastructure details |
 | [Security](Nexus-Team/docs/SECURITY.md) | Security model and production hardening |

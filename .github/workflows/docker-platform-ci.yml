@@ -1,0 +1,152 @@
+name: Docker Platform CI
+
+on:
+  push:
+    paths:
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/.dockerignore'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/web/**'
+      - 'Nexus-Team/config/**'
+      - 'Nexus-Team/scripts/verify-docker-stack.sh'
+      - '.github/workflows/docker-platform-ci.yml'
+      - '.github/workflows/docker-desktop-hosts.yml'
+  pull_request:
+    paths:
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/.dockerignore'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/web/**'
+      - 'Nexus-Team/config/**'
+      - 'Nexus-Team/scripts/verify-docker-stack.sh'
+      - '.github/workflows/docker-platform-ci.yml'
+      - '.github/workflows/docker-desktop-hosts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-platform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-compose:
+    name: Validate Docker Compose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Validate Compose model
+        working-directory: Nexus-Team
+        run: docker compose config --quiet
+
+  build-images:
+    name: Build ${{ matrix.image }} (amd64 + arm64)
+    needs: validate-compose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: server
+            context: ./Nexus-Team
+            dockerfile: ./Nexus-Team/src/NexusTeam.Server/Dockerfile
+          - image: db-seeder
+            context: ./Nexus-Team
+            dockerfile: ./Nexus-Team/src/NexusTeam.DbSeeder/Dockerfile
+          - image: web
+            context: ./Nexus-Team/web
+            dockerfile: ./Nexus-Team/web/Dockerfile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build both Linux architectures
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  integration:
+    name: Full stack / ${{ matrix.name }}
+    needs: validate-compose
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-24.04
+            arch: amd64
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Show Docker environment
+        run: |
+          uname -a
+          docker version
+          docker compose version
+          docker system df
+
+      - name: Pull dependency images
+        working-directory: Nexus-Team
+        run: docker compose pull --ignore-buildable
+
+      - name: Build and start the full stack
+        working-directory: Nexus-Team
+        run: docker compose up --detach --build
+
+      - name: Show service state
+        working-directory: Nexus-Team
+        run: docker compose ps --all
+
+      - name: Verify databases, cache, API and web client
+        working-directory: Nexus-Team
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: bash scripts/verify-docker-stack.sh
+
+      - name: Test seeder idempotency
+        working-directory: Nexus-Team
+        run: docker compose up db-seeder --force-recreate --exit-code-from db-seeder
+
+      - name: Test warm restart with existing volumes
+        working-directory: Nexus-Team
+        run: |
+          docker compose down
+          docker compose up --detach
+          docker compose ps --all
+          curl -fsS --retry 30 --retry-delay 5 --retry-all-errors \
+            http://localhost:5251/health | grep -q Healthy
+
+      - name: Collect logs on failure
+        if: failure()
+        working-directory: Nexus-Team
+        run: docker compose logs --no-color --tail=200
+
+      - name: Shut down infrastructure
+        if: always()
+        working-directory: Nexus-Team
+        run: docker compose down --volumes --remove-orphans
