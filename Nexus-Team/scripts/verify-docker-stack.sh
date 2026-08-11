@@ -8,6 +8,7 @@ server_port="${SERVER_PORT:-5251}"
 oracle_user="${ORACLE_APP_USER:-nexusteam_admin}"
 oracle_password="${ORACLE_APP_PASSWORD:-060707}"
 oracle_service="${ORACLE_SERVICE:-FREEPDB1}"
+mongo_database="${MONGO_DATABASE:-NexusTeam}"
 
 echo "Verifying DB seeder..."
 seeder_exit_code="$(docker inspect nexusteam_db_seeder --format='{{.State.ExitCode}}')"
@@ -22,10 +23,16 @@ if [[ -n "$expected_arch" ]]; then
   runtime_arch="$(docker exec nexusteam_server uname -m)"
   case "$expected_arch" in
     amd64)
-      [[ "$runtime_arch" == "x86_64" || "$runtime_arch" == "amd64" ]]
+      if [[ "$runtime_arch" != "x86_64" && "$runtime_arch" != "amd64" ]]; then
+        echo "Runtime architecture mismatch: expected amd64, got $runtime_arch"
+        exit 1
+      fi
       ;;
     arm64)
-      [[ "$runtime_arch" == "aarch64" || "$runtime_arch" == "arm64" ]]
+      if [[ "$runtime_arch" != "aarch64" && "$runtime_arch" != "arm64" ]]; then
+        echo "Runtime architecture mismatch: expected arm64, got $runtime_arch"
+        exit 1
+      fi
       ;;
     *)
       echo "Unsupported EXPECTED_ARCH value: $expected_arch"
@@ -36,8 +43,9 @@ if [[ -n "$expected_arch" ]]; then
 fi
 
 echo "Verifying MongoDB collections and indexes..."
-docker exec nexusteam_mongos mongosh --quiet --eval '
-  const appDb = db.getSiblingDB("NexusTeam");
+docker exec -e VERIFY_MONGO_DATABASE="$mongo_database" \
+  nexusteam_mongos mongosh --quiet --eval '
+  const appDb = db.getSiblingDB(process.env.VERIFY_MONGO_DATABASE);
   const collections = appDb.getCollectionNames();
   const required = ["chats", "messages", "attachments", "user_preferences"];
 
