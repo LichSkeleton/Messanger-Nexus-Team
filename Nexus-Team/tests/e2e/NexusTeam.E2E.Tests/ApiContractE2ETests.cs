@@ -31,6 +31,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "API-04 Null participant list is a validation error, not server error")]
+        [Trait("Category", "Regression")]
         public async Task Api04_NullParticipants()
         {
             var user = await this.fixture.RegisterAndLoginAsync("api04"); using var client = this.fixture.Client(user.Token); using var response = await client.PostAsJsonAsync("/api/chats", new { name = "Null participants", type = 1, participantIds = (string[]?)null }); Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

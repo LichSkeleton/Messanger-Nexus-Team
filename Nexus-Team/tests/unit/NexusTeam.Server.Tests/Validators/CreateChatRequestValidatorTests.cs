@@ -32,6 +32,7 @@ namespace NexusTeam.Server.Tests.Validators
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public void Validate_WithNullParticipants_HasRequiredError()
         {
             var request = CreateValidRequest();

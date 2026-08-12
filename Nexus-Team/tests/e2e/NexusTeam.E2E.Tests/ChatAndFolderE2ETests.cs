@@ -97,6 +97,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "FOLDER-02 User cannot read another user's folder")]
+        [Trait("Category", "Regression")]
         public async Task Folder02_OwnershipIsolation()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("folder02_owner"); var outsider = await this.fixture.RegisterAndLoginAsync("folder02_out"); using var ownerClient = this.fixture.Client(owner.Token);

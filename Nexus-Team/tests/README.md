@@ -14,6 +14,13 @@ Run the complete unit suite with:
 docker compose run --rm --build unit-test
 ```
 
+To run only the green CI baseline or only documented regressions:
+
+```sh
+docker compose run --rm --build -e TEST_FILTER="Category!=Regression" unit-test
+docker compose run --rm --build -e TEST_FILTER="Category=Regression" unit-test
+```
+
 The Compose service and profile are both named `unit-test`. Because the service
 is profile-gated, a normal `docker compose up` does not build or run it.
 
@@ -28,6 +35,8 @@ Run them with:
 ```sh
 docker compose --profile e2e-test run --rm --build e2e-test
 ```
+
+The same `TEST_FILTER` values select the E2E baseline or documented regressions.
 
 The Compose service and profile are both named `e2e-test`. The profile starts
 isolated `oracle-e2e`, `mongo-e2e`, `redis-e2e`, `db-seeder-e2e` and

@@ -70,6 +70,7 @@ namespace NexusTeam.Server.Tests.Middleware
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public async Task InvokeAsync_WithUnexpectedException_DoesNotExposeInternalDetail()
         {
             const string SensitiveDetail = "database password leaked";
@@ -83,6 +84,7 @@ namespace NexusTeam.Server.Tests.Middleware
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public async Task InvokeAsync_WithUnauthorizedException_ReturnsUnauthorized()
         {
             var context = await InvokeWithExceptionAsync(
@@ -92,6 +94,7 @@ namespace NexusTeam.Server.Tests.Middleware
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public async Task InvokeAsync_WithNotFoundException_ReturnsNotFound()
         {
             var context = await InvokeWithExceptionAsync(

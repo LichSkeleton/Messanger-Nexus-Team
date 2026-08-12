@@ -114,6 +114,7 @@ namespace NexusTeam.Shared.Tests.Serialization
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public void WebSocket_WhenSerializingAnonymousPayload_SupportsControllerPayloads()
         {
             var payload = new { ChatId = "chat-1" };

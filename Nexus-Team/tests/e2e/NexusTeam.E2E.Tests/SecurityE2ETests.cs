@@ -52,6 +52,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-06 Non-participant cannot read a private chat")]
+        [Trait("Category", "Regression")]
         public async Task Sec06_NonParticipantCannotReadChat()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec06_owner"); var member = await this.fixture.RegisterAndLoginAsync("sec06_member"); var outsider = await this.fixture.RegisterAndLoginAsync("sec06_out");
@@ -61,6 +62,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-07 Non-participant cannot read private messages")]
+        [Trait("Category", "Regression")]
         public async Task Sec07_NonParticipantCannotReadMessages()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec07_owner"); var member = await this.fixture.RegisterAndLoginAsync("sec07_member"); var outsider = await this.fixture.RegisterAndLoginAsync("sec07_out");
@@ -89,6 +91,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-10 Security headers are present on API responses")]
+        [Trait("Category", "Regression")]
         public async Task Sec10_SecurityHeaders()
         {
             using var client = this.fixture.Client(); using var response = await client.GetAsync("/health");
@@ -99,6 +102,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-11 Anonymous message history access is rejected")]
+        [Trait("Category", "Regression")]
         public async Task Sec11_AnonymousMessageHistoryRejected()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec11_owner"); var member = await this.fixture.RegisterAndLoginAsync("sec11_member"); var chatId = await this.fixture.CreateChatAsync(owner, member);
@@ -107,6 +111,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-12 Anonymous attachment listing is rejected")]
+        [Trait("Category", "Regression")]
         public async Task Sec12_AnonymousAttachmentListingRejected()
         {
             using var client = this.fixture.Client(); using var response = await client.GetAsync("/api/attachments/message/nonexistent");
@@ -114,6 +119,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-13 Group member cannot delete owner chat")]
+        [Trait("Category", "Regression")]
         public async Task Sec13_NonOwnerCannotDeleteGroup()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec13_owner"); var member = await this.fixture.RegisterAndLoginAsync("sec13_member"); var chatId = await this.fixture.CreateChatAsync(owner, member);
@@ -130,6 +136,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-15 Anonymous generated-image metadata access is rejected")]
+        [Trait("Category", "Regression")]
         public async Task Sec15_AnonymousGeneratedImageRejected()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec15"); using var ownerClient = this.fixture.Client(owner.Token); using var create = await ownerClient.PostAsJsonAsync("/api/generated-images", new { prompt = "private", model = "e2e", imageUrl = "url", width = 1, height = 1 }); using var json = await E2EFixture.ReadJsonAsync(create); var id = json.RootElement.GetProperty("id").GetString();
@@ -137,6 +144,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-16 Another user cannot read generated-image metadata")]
+        [Trait("Category", "Regression")]
         public async Task Sec16_GeneratedImageOwnership()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec16_owner"); var outsider = await this.fixture.RegisterAndLoginAsync("sec16_out"); using var ownerClient = this.fixture.Client(owner.Token); using var create = await ownerClient.PostAsJsonAsync("/api/generated-images", new { prompt = "private", model = "e2e", imageUrl = "url", width = 1, height = 1 }); using var json = await E2EFixture.ReadJsonAsync(create); var id = json.RootElement.GetProperty("id").GetString();
@@ -144,6 +152,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-17 Anonymous attachment upload is rejected")]
+        [Trait("Category", "Regression")]
         public async Task Sec17_AnonymousAttachmentUpload()
         {
             using var client = this.fixture.Client(); using var form = new MultipartFormDataContent(); var bytes = new ByteArrayContent(new byte[] { 1 }); bytes.Headers.ContentType = new MediaTypeHeaderValue("text/plain"); form.Add(bytes, "file", "private.txt"); form.Add(new StringContent("message-id"), "messageId");
@@ -151,6 +160,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-18 Anonymous attachment delete is rejected")]
+        [Trait("Category", "Regression")]
         public async Task Sec18_AnonymousAttachmentDelete()
         {
             using var client = this.fixture.Client(); using var response = await client.DeleteAsync("/api/attachments/any-id"); Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -164,6 +174,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "SEC-20 Non-participant cannot react to private message")]
+        [Trait("Category", "Regression")]
         public async Task Sec20_OutsiderCannotReact()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("sec20_owner"); var member = await this.fixture.RegisterAndLoginAsync("sec20_member"); var outsider = await this.fixture.RegisterAndLoginAsync("sec20_out"); var chatId = await this.fixture.CreateChatAsync(owner, member); var message = await this.fixture.SendMessageAsync(owner, chatId, "private");

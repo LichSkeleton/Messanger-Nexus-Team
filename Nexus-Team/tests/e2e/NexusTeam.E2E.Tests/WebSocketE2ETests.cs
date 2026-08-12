@@ -103,6 +103,7 @@ namespace NexusTeam.E2E.Tests
         }
 
         [Fact(DisplayName = "WS-11 Message rate limiting returns an explicit error")]
+        [Trait("Category", "Regression")]
         public async Task Ws11_MessageRateLimit()
         {
             var owner = await this.fixture.RegisterAndLoginAsync("ws11_owner"); var member = await this.fixture.RegisterAndLoginAsync("ws11_member"); var chatId = await this.fixture.CreateChatAsync(owner, member);

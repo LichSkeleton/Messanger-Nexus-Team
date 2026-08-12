@@ -46,6 +46,7 @@ namespace NexusTeam.Server.Tests.Services
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public async Task VerifyPasswordAsync_WithMalformedHash_ReturnsFalse()
         {
             var hasher = CreateHasher();

@@ -143,6 +143,7 @@ namespace NexusTeam.Server.Tests.Services
         }
 
         [Fact]
+        [Trait("Category", "Regression")]
         public void AddConnection_WithDuplicateId_DoesNotAssociateItWithSecondUser()
         {
             var manager = CreateManager();
