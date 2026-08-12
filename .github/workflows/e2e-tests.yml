@@ -1,58 +1,32 @@
-name: Automated Tests
+name: End-to-End Tests
 
 on:
   push:
     paths:
-      - 'Nexus-Team/Dockerfile.unit-test'
       - 'Nexus-Team/Dockerfile.e2e-test'
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/src/**'
-      - 'Nexus-Team/tests/**'
-      - '.github/workflows/automated-tests.yml'
+      - 'Nexus-Team/tests/e2e/**'
+      - '.github/workflows/e2e-tests.yml'
   pull_request:
     paths:
-      - 'Nexus-Team/Dockerfile.unit-test'
       - 'Nexus-Team/Dockerfile.e2e-test'
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/src/**'
-      - 'Nexus-Team/tests/**'
-      - '.github/workflows/automated-tests.yml'
+      - 'Nexus-Team/tests/e2e/**'
+      - '.github/workflows/e2e-tests.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: automated-tests-${{ github.workflow }}-${{ github.ref }}
+  group: e2e-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
-    name: Unit tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Run required unit-test baseline
-        working-directory: Nexus-Team
-        run: >-
-          docker compose run --rm --build
-          -e TEST_FILTER="Category!=Regression"
-          unit-test
-
-      - name: Exercise documented unit regressions
-        continue-on-error: true
-        working-directory: Nexus-Team
-        run: >-
-          docker compose run --rm
-          -e TEST_FILTER="Category=Regression"
-          unit-test
-
   e2e-tests:
-    name: End-to-end tests
+    name: E2E test baseline
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 

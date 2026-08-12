@@ -1,0 +1,50 @@
+name: Unit Tests
+
+on:
+  push:
+    paths:
+      - 'Nexus-Team/Dockerfile.unit-test'
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/tests/unit/**'
+      - '.github/workflows/unit-tests.yml'
+  pull_request:
+    paths:
+      - 'Nexus-Team/Dockerfile.unit-test'
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/tests/unit/**'
+      - '.github/workflows/unit-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit test baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Run required unit-test baseline
+        working-directory: Nexus-Team
+        run: >-
+          docker compose run --rm --build
+          -e TEST_FILTER="Category!=Regression"
+          unit-test
+
+      - name: Exercise documented unit regressions
+        continue-on-error: true
+        working-directory: Nexus-Team
+        run: >-
+          docker compose run --rm
+          -e TEST_FILTER="Category=Regression"
+          unit-test
