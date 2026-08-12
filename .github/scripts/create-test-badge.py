@@ -12,16 +12,35 @@ SUMMARY = re.compile(
     r"Total:\s*(?P<total>\d+)",
 )
 
+VSTEST_BLOCK = re.compile(
+    r"Test Run (?:Successful|Failed)\.(?P<body>.*?)(?=Total time:)",
+    re.DOTALL,
+)
+
+
+def value(body: str, label: str) -> int:
+    match = re.search(rf"^\s*{label}:\s*(\d+)\s*$", body, re.MULTILINE)
+    return int(match.group(1)) if match else 0
+
 
 def totals(path: Path) -> tuple[int, int, int]:
-    matches = list(SUMMARY.finditer(path.read_text(encoding="utf-8")))
-    if not matches:
-        raise ValueError(f"No test summary found in {path}")
+    text = path.read_text(encoding="utf-8")
+    matches = list(SUMMARY.finditer(text))
+    if matches:
+        return tuple(
+            sum(int(match.group(field)) for match in matches)
+            for field in ("failed", "passed", "total")
+        )
 
-    return tuple(
-        sum(int(match.group(field)) for match in matches)
-        for field in ("failed", "passed", "total")
-    )
+    blocks = [match.group("body") for match in VSTEST_BLOCK.finditer(text)]
+    if blocks:
+        return (
+            sum(value(block, "Failed") for block in blocks),
+            sum(value(block, "Passed") for block in blocks),
+            sum(value(block, "Total tests") for block in blocks),
+        )
+
+    raise ValueError(f"No test summary found in {path}")
 
 
 def main() -> None:

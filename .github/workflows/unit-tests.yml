@@ -67,7 +67,7 @@ jobs:
           set -o pipefail
           docker compose run --rm --build \
             -e TEST_FILTER="Category!=Regression" \
-            unit-test | tee "$RUNNER_TEMP/unit-baseline.log"
+            unit-test 2>&1 | tee "$RUNNER_TEMP/unit-baseline.log"
 
       - name: Exercise documented unit regressions
         if: steps.scope.outputs.run == 'true'
@@ -77,7 +77,7 @@ jobs:
           set -o pipefail
           docker compose run --rm \
             -e TEST_FILTER="Category=Regression" \
-            unit-test | tee "$RUNNER_TEMP/unit-regressions.log"
+            unit-test 2>&1 | tee "$RUNNER_TEMP/unit-regressions.log"
 
       - name: Generate dynamic unit-test count badge
         id: badge

@@ -67,7 +67,7 @@ jobs:
           set -o pipefail
           docker compose --profile e2e-test run --rm --build \
             -e TEST_FILTER="Category!=Regression" \
-            e2e-test | tee "$RUNNER_TEMP/e2e-baseline.log"
+            e2e-test 2>&1 | tee "$RUNNER_TEMP/e2e-baseline.log"
 
       - name: Exercise documented E2E regressions
         if: steps.scope.outputs.run == 'true'
@@ -78,7 +78,7 @@ jobs:
           docker compose --profile e2e-test run --rm \
             --no-deps \
             -e TEST_FILTER="Category=Regression" \
-            e2e-test | tee "$RUNNER_TEMP/e2e-regressions.log"
+            e2e-test 2>&1 | tee "$RUNNER_TEMP/e2e-regressions.log"
 
       - name: Generate dynamic E2E count badge
         id: badge
