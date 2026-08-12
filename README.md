@@ -9,9 +9,9 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 [![Unit Tests](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml)
-![Unit Test Results](https://img.shields.io/badge/unit%20tests-455%2F462%20passing-f0ad4e)
+[![Unit Test Results](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FLichSkeleton%2FMessanger-Nexus-Team%2Ftest-badges%2Funit-tests.json)](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml)
 [![End-to-End Tests](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml/badge.svg)](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml)
-![E2E Test Results](https://img.shields.io/badge/E2E%20tests-90%2F104%20passing-f0ad4e)
+[![E2E Test Results](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FLichSkeleton%2FMessanger-Nexus-Team%2Ftest-badges%2Fe2e-tests.json)](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml)
 
 **A modern, scalable real-time chat application built with .NET 8 — WebSocket messaging, a multi-database backend, and a responsive web client that works on desktop and mobile. The entire stack runs in Docker with a single command.**
 
@@ -25,15 +25,16 @@
 
 The test suites run entirely in Docker, so no local .NET SDK is required.
 
-| Suite | Total | Passing baseline | Documented regressions | Live status |
-|-------|------:|-----------------:|-----------------------:|-------------|
-| Unit | 462 | 455 | 7 | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml) |
-| End-to-end | 104 | 90 | 14 | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml) |
+| Suite | Current result | Live status |
+|-------|----------------|-------------|
+| Unit | Dynamic badge above | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml) |
+| End-to-end | Dynamic badge above | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml) |
 
 Known regressions remain executable as non-blocking visibility checks and are
 tracked with acceptance criteria in [`Nexus-Team/TODO.md`](Nexus-Team/TODO.md).
 The required green baselines fail the workflow when a previously passing test
-regresses.
+regresses. After successful runs on `main`, Actions parses the actual test
+runner summaries and publishes fresh `passed/total` badge data automatically.
 
 Run either suite locally with:
 

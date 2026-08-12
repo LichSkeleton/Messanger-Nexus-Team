@@ -18,11 +18,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: unit-tests-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: test-suites-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   unit-tests:
@@ -35,16 +35,37 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run required unit-test baseline
+        id: baseline
+        continue-on-error: true
         working-directory: Nexus-Team
-        run: >-
-          docker compose run --rm --build
-          -e TEST_FILTER="Category!=Regression"
-          unit-test
+        run: |
+          set -o pipefail
+          docker compose run --rm --build \
+            -e TEST_FILTER="Category!=Regression" \
+            unit-test | tee "$RUNNER_TEMP/unit-baseline.log"
 
       - name: Exercise documented unit regressions
         continue-on-error: true
         working-directory: Nexus-Team
+        run: |
+          set -o pipefail
+          docker compose run --rm \
+            -e TEST_FILTER="Category=Regression" \
+            unit-test | tee "$RUNNER_TEMP/unit-regressions.log"
+
+      - name: Generate dynamic unit-test count badge
+        if: always()
         run: >-
-          docker compose run --rm
-          -e TEST_FILTER="Category=Regression"
-          unit-test
+          python3 .github/scripts/create-test-badge.py
+          --label "unit tests"
+          --baseline-log "$RUNNER_TEMP/unit-baseline.log"
+          --regression-log "$RUNNER_TEMP/unit-regressions.log"
+          --output "$RUNNER_TEMP/unit-tests.json"
+
+      - name: Publish unit-test count badge
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: bash .github/scripts/publish-test-badge.sh "$RUNNER_TEMP/unit-tests.json" unit-tests.json
+
+      - name: Enforce unit-test baseline
+        if: always() && steps.baseline.outcome != 'success'
+        run: exit 1
