@@ -2,6 +2,7 @@ name: End-to-End Tests
 
 on:
   push:
+    branches: [ main ]
     paths:
       - 'Nexus-Team/Dockerfile.e2e-test'
       - 'Nexus-Team/docker-compose.yaml'
@@ -18,7 +19,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: test-suites-${{ github.ref }}
@@ -29,13 +30,37 @@ jobs:
     name: E2E test baseline
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      badge: ${{ steps.badge.outputs.json }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: scope
+        shell: bash
+        run: |
+          run_tests=true
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "synchronize" ]]; then
+            run_tests=false
+            if git diff --name-only "${{ github.event.before }}" "${{ github.event.after }}" -- \
+              Nexus-Team/Dockerfile.e2e-test \
+              Nexus-Team/docker-compose.yaml \
+              Nexus-Team/src \
+              Nexus-Team/tests/e2e \
+              .github/scripts \
+              .github/workflows/e2e-tests.yml | grep -q .; then
+              run_tests=true
+            fi
+          fi
+          echo "run=$run_tests" >> "$GITHUB_OUTPUT"
 
       - name: Run required E2E baseline against isolated services
         id: baseline
+        if: steps.scope.outputs.run == 'true'
         continue-on-error: true
         working-directory: Nexus-Team
         run: |
@@ -45,6 +70,7 @@ jobs:
             e2e-test | tee "$RUNNER_TEMP/e2e-baseline.log"
 
       - name: Exercise documented E2E regressions
+        if: steps.scope.outputs.run == 'true'
         continue-on-error: true
         working-directory: Nexus-Team
         run: |
@@ -55,20 +81,18 @@ jobs:
             e2e-test | tee "$RUNNER_TEMP/e2e-regressions.log"
 
       - name: Generate dynamic E2E count badge
-        if: always()
+        id: badge
+        if: always() && steps.scope.outputs.run == 'true'
         run: >-
           python3 .github/scripts/create-test-badge.py
           --label "E2E tests"
           --baseline-log "$RUNNER_TEMP/e2e-baseline.log"
           --regression-log "$RUNNER_TEMP/e2e-regressions.log"
           --output "$RUNNER_TEMP/e2e-tests.json"
-
-      - name: Publish E2E count badge
-        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: bash .github/scripts/publish-test-badge.sh "$RUNNER_TEMP/e2e-tests.json" e2e-tests.json
+          && echo "json=$(base64 < "$RUNNER_TEMP/e2e-tests.json" | tr -d '\n')" >> "$GITHUB_OUTPUT"
 
       - name: Collect isolated service logs on failure
-        if: failure()
+        if: failure() && steps.scope.outputs.run == 'true'
         working-directory: Nexus-Team
         run: >-
           docker compose --profile e2e-test logs
@@ -76,7 +100,7 @@ jobs:
           server-e2e db-seeder-e2e redis-e2e mongo-e2e oracle-e2e
 
       - name: Shut down isolated test infrastructure
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         working-directory: Nexus-Team
         run: |
           docker compose --profile e2e-test stop \
@@ -85,5 +109,22 @@ jobs:
             server-e2e db-seeder-e2e redis-e2e mongo-e2e oracle-e2e
 
       - name: Enforce E2E baseline
-        if: always() && steps.baseline.outcome != 'success'
+        if: always() && steps.scope.outputs.run == 'true' && steps.baseline.outcome != 'success'
         run: exit 1
+
+  publish-e2e-badge:
+    name: Publish E2E badge
+    needs: e2e-tests
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.e2e-tests.outputs.badge != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Publish badge data
+        run: |
+          echo "${{ needs.e2e-tests.outputs.badge }}" | base64 --decode > "$RUNNER_TEMP/e2e-tests.json"
+          bash .github/scripts/publish-test-badge.sh "$RUNNER_TEMP/e2e-tests.json" e2e-tests.json

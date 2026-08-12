@@ -36,7 +36,9 @@ namespace NexusTeam.Server.Tests.Middleware
 
             await WebSocketHandler.BroadcastAvatarUpdateAsync("owner", "/avatar", chats, connections, new LoggerConfiguration().CreateLogger());
 
-            Assert.Equal(new[] { "p1", "p2" }, connections.Users);
+            Assert.Equal(2, connections.Users.Count);
+            Assert.Contains("p1", connections.Users);
+            Assert.Contains("p2", connections.Users);
             Assert.All(connections.Messages, message => Assert.Contains("\"type\":\"avatarUpdate\"", message));
         }
 
