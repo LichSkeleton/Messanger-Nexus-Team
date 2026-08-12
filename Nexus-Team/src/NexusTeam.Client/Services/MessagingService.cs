@@ -357,7 +357,7 @@ namespace NexusTeam.Client.Services
         /// <inheritdoc/>
         public async Task SendTypingIndicatorAsync(string chatId, CancellationToken cancellationToken = default)
         {
-            var payload = new { ChatId = chatId };
+            var payload = new TypingIndicatorPayload { ChatId = chatId };
             var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
 
             var envelope = new WebSocketMessageEnvelope
@@ -1437,18 +1437,6 @@ namespace NexusTeam.Client.Services
                 this.logger.Error(ex, "Error flushing offline queue");
                 this.errorHandler.HandleError(ex, "Failed to send some queued messages", false);
             }
-        }
-
-        private class TypingIndicatorPayload
-        {
-            public string UserId { get; set; } = string.Empty;
-
-            public string ChatId { get; set; } = string.Empty;
-        }
-
-        private class ChatDeletedPayload
-        {
-            public string ChatId { get; set; } = string.Empty;
         }
     }
 }

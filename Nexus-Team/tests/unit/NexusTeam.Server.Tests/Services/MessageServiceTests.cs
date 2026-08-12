@@ -140,8 +140,9 @@ namespace NexusTeam.Server.Tests.Services
             {
                 new MessageDto { Id = "m1" }, new MessageDto { Id = "m2" }, new MessageDto { Id = "m3" },
             };
+            fixture.Chats.ById = Chat("user-1");
 
-            var result = (await fixture.Service.GetChatMessagesAsync("chat-1", 1, 1)).ToList();
+            var result = (await fixture.Service.GetChatMessagesAsync("chat-1", "user-1", 1, 1)).ToList();
 
             Assert.Equal("m2", Assert.Single(result).Id);
             Assert.Null(fixture.Messages.LastChatQuery);
@@ -151,10 +152,11 @@ namespace NexusTeam.Server.Tests.Services
         public async Task GetChatMessagesAsync_OnCacheMiss_LoadsAttachmentsMapsAndCachesForFiveMinutes()
         {
             var fixture = new Fixture();
+            fixture.Chats.ById = Chat("user-1");
             fixture.Messages.ChatMessages.Add(Message());
             fixture.Attachments.ByMessage["message-1"] = new List<MessageAttachment> { Attachment("a1") };
 
-            var result = (await fixture.Service.GetChatMessagesAsync("chat-1", 20, 5)).ToList();
+            var result = (await fixture.Service.GetChatMessagesAsync("chat-1", "user-1", 20, 5)).ToList();
 
             Assert.Single(result);
             Assert.Single(result[0].Attachments);
@@ -222,6 +224,7 @@ namespace NexusTeam.Server.Tests.Services
         {
             var fixture = new Fixture();
             fixture.Messages.ById = Message();
+            fixture.Chats.ById = Chat("user-1");
 
             await fixture.Service.AddReactionAsync("message-1", "👍", "user-1");
             fixture.Messages.Updated = null;
@@ -239,6 +242,7 @@ namespace NexusTeam.Server.Tests.Services
             var fixture = new Fixture();
             fixture.Messages.ById = Message();
             fixture.Messages.ById.Reactions["👍"] = new List<string> { "user-1" };
+            fixture.Chats.ById = Chat("user-1");
 
             var result = await fixture.Service.RemoveReactionAsync("message-1", "👍", "user-1");
 

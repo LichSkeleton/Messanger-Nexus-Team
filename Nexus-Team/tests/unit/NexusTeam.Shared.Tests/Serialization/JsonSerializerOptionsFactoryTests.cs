@@ -115,15 +115,61 @@ namespace NexusTeam.Shared.Tests.Serialization
 
         [Fact]
         [Trait("Category", "Regression")]
-        public void WebSocket_WhenSerializingAnonymousPayload_SupportsControllerPayloads()
+        public void WebSocket_WhenSerializingChatDeletedPayload_UsesCamelCase()
         {
-            var payload = new { ChatId = "chat-1" };
+            var payload = new ChatDeletedPayload { ChatId = "chat-1" };
 
             var element = JsonSerializer.SerializeToElement(
                 payload,
                 JsonSerializerOptionsFactory.WebSocket);
 
             Assert.Equal("chat-1", element.GetProperty("chatId").GetString());
+        }
+
+        [Fact]
+        public void WebSocket_ChatDeletedPayload_RoundTripsWithoutDataLoss()
+        {
+            var payload = new ChatDeletedPayload { ChatId = "chat-42" };
+            var options = JsonSerializerOptionsFactory.WebSocket;
+
+            var json = JsonSerializer.Serialize(payload, options);
+            var restored = JsonSerializer.Deserialize<ChatDeletedPayload>(json, options);
+
+            Assert.NotNull(restored);
+            Assert.Equal("chat-42", restored.ChatId);
+        }
+
+        [Fact]
+        public void WebSocket_TypingIndicatorPayload_RoundTripsWithoutDataLoss()
+        {
+            var payload = new TypingIndicatorPayload { UserId = "user-1", ChatId = "chat-2" };
+            var options = JsonSerializerOptionsFactory.WebSocket;
+
+            var json = JsonSerializer.Serialize(payload, options);
+            var restored = JsonSerializer.Deserialize<TypingIndicatorPayload>(json, options);
+
+            Assert.NotNull(restored);
+            Assert.Equal("user-1", restored.UserId);
+            Assert.Equal("chat-2", restored.ChatId);
+        }
+
+        [Fact]
+        public void WebSocket_RateLimitErrorPayload_RoundTripsWithoutDataLoss()
+        {
+            var payload = new RateLimitErrorPayload
+            {
+                Error = "Rate limit exceeded",
+                Message = "Too many messages sent. Please slow down.",
+            };
+            var options = JsonSerializerOptionsFactory.WebSocket;
+
+            var json = JsonSerializer.Serialize(payload, options);
+            var restored = JsonSerializer.Deserialize<RateLimitErrorPayload>(json, options);
+
+            Assert.NotNull(restored);
+            Assert.Equal("Rate limit exceeded", restored.Error);
+            Assert.Equal("Too many messages sent. Please slow down.", restored.Message);
+            Assert.Contains("rate limit", json, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]

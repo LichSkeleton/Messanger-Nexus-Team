@@ -164,7 +164,7 @@ namespace NexusTeam.Server.Tests.Controllers
 
         private sealed class Connections : IWebSocketConnectionManager
         {
-            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask; public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectedUserIds() => Array.Empty<string>(); public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask; public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
     }
 }

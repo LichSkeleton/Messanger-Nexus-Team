@@ -68,7 +68,7 @@ namespace NexusTeam.Server.Services
             if (folder.UserId != userId)
             {
                 this.logger.Warning("User {UserId} attempted to access folder {FolderId} owned by {OwnerId}", userId, folderId, folder.UserId);
-                throw new UnauthorizedException("You do not have access to this folder.");
+                return null;
             }
 
             return this.MapToDto(folder);

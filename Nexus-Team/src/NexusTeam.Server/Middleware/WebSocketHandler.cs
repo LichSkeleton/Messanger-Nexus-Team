@@ -568,10 +568,15 @@ namespace NexusTeam.Server.Middleware
             if (!isAllowed)
             {
                 this.logger.Warning("Rate limit exceeded for message send: {UserId}", userId);
+                var errorPayload = new RateLimitErrorPayload
+                {
+                    Error = "Rate limit exceeded",
+                    Message = "Too many messages sent. Please slow down.",
+                };
                 var errorResponse = new WebSocketMessageEnvelope
                 {
                     Type = NexusTeam.Shared.Enums.WebSocketMessageType.Error,
-                    Payload = JsonSerializer.SerializeToElement(new { Error = "Rate limit exceeded", Message = "Too many messages sent. Please slow down." }, options),
+                    Payload = JsonSerializer.SerializeToElement(errorPayload, options),
                 };
                 var errorJson = JsonSerializer.Serialize(errorResponse, options);
                 await this.connectionManager.BroadcastToUserAsync(userId, errorJson, CancellationToken.None);

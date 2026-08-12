@@ -114,6 +114,7 @@ namespace NexusTeam.Server.Extensions
             services.AddSingleton<IWebSocketConnectionManager, WebSocketConnectionManager>();
             services.AddSingleton<ISessionService, SessionService>();
             services.AddScoped<IGeneratedImageService, GeneratedImageService>();
+            services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
             services.AddHostedService<PresenceTrackingService>();
 
             return services;

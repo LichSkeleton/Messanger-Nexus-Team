@@ -66,7 +66,7 @@ namespace NexusTeam.Server.Tests.Middleware
         {
             public List<string> Users { get; } = new List<string>(); public List<string> Messages { get; } = new List<string>();
             public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) { this.Users.Add(userId); this.Messages.Add(message); return Task.CompletedTask; }
-            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectedUserIds() => Array.Empty<string>(); public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
     }
 }

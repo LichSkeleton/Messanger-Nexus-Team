@@ -40,13 +40,12 @@ namespace NexusTeam.Server.Tests.Services
         }
 
         [Fact]
-        public async Task GetFolderByIdAsync_WhenOwnedByAnotherUser_ThrowsUnauthorized()
+        public async Task GetFolderByIdAsync_WhenOwnedByAnotherUser_ReturnsNull()
         {
             var fixture = new Fixture();
             fixture.Folders.Folder = CreateFolder(owner: "user-2");
 
-            await Assert.ThrowsAsync<UnauthorizedException>(() =>
-                fixture.Service.GetFolderByIdAsync("folder-1", "user-1"));
+            Assert.Null(await fixture.Service.GetFolderByIdAsync("folder-1", "user-1"));
         }
 
         [Fact]

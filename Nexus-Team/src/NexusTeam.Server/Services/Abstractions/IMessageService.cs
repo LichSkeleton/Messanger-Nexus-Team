@@ -42,11 +42,12 @@ namespace NexusTeam.Server.Services.Abstractions
         /// Gets messages for a specific chat.
         /// </summary>
         /// <param name="chatId">The chat ID.</param>
+        /// <param name="userId">The requesting user ID.</param>
         /// <param name="limit">Maximum number of messages.</param>
         /// <param name="offset">Number of messages to skip.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A collection of message DTOs.</returns>
-        Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default);
+        Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Marks a message as delivered.

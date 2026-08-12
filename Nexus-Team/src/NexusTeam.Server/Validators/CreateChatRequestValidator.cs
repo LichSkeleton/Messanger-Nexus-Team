@@ -22,6 +22,7 @@ namespace NexusTeam.Server.Validators
                 .When(x => !string.IsNullOrEmpty(x.Description));
 
             this.RuleFor(x => x.ParticipantIds)
+                .Cascade(CascadeMode.Stop)
                 .NotNull().WithMessage("Participant list is required")
                 .Must(x => x.Count >= 1).WithMessage("At least one other participant is required (minimum 2 including creator)");
 

@@ -31,12 +31,15 @@ namespace NexusTeam.Server.Tests.Controllers
         }
 
         [Fact]
-        public async Task GetImage_ReturnsNotFoundOrOk()
+        public async Task GetImage_ReturnsUnauthorizedNotFoundOrOk()
         {
-            var fixture = new Fixture();
+            Assert.IsType<UnauthorizedResult>(await new Fixture().Controller.GetImage("missing"));
+            var fixture = new Fixture("user-1");
             Assert.IsType<NotFoundResult>(await fixture.Controller.GetImage("missing"));
-            fixture.Service.Image = new GeneratedImageDto { Id = "image-1" };
+            fixture.Service.Image = new GeneratedImageDto { Id = "image-1", UserId = "user-1" };
             Assert.IsType<OkObjectResult>(await fixture.Controller.GetImage("image-1"));
+            fixture.Service.Image = new GeneratedImageDto { Id = "image-1", UserId = "other" };
+            Assert.IsType<NotFoundResult>(await fixture.Controller.GetImage("image-1"));
         }
 
         [Fact]
@@ -62,7 +65,8 @@ namespace NexusTeam.Server.Tests.Controllers
         [Fact]
         public async Task SaveImageData_WithValidBase64_ForwardsDecodedBytes()
         {
-            var fixture = new Fixture();
+            var fixture = new Fixture("user-1");
+            fixture.Service.Image = new GeneratedImageDto { Id = "image-1", UserId = "user-1" };
             var result = await fixture.Controller.SaveImageData("image-1", new SaveImageDataRequest { ImageDataBase64 = "AQID" });
 
             Assert.IsType<OkObjectResult>(result);
@@ -72,15 +76,18 @@ namespace NexusTeam.Server.Tests.Controllers
         [Fact]
         public async Task SaveImageData_WithInvalidBase64_ReturnsBadRequest()
         {
-            var fixture = new Fixture();
+            var fixture = new Fixture("user-1");
+            fixture.Service.Image = new GeneratedImageDto { Id = "image-1", UserId = "user-1" };
             Assert.IsType<BadRequestObjectResult>(await fixture.Controller.SaveImageData("image-1", new SaveImageDataRequest { ImageDataBase64 = "!" }));
         }
 
         [Fact]
-        public async Task DownloadImage_ReturnsNotFoundOrFile()
+        public async Task DownloadImage_ReturnsUnauthorizedNotFoundOrFile()
         {
-            var fixture = new Fixture();
+            Assert.IsType<NotFoundResult>(await new Fixture().Controller.DownloadImage("missing"));
+            var fixture = new Fixture("user-1");
             Assert.IsType<NotFoundResult>(await fixture.Controller.DownloadImage("missing"));
+            fixture.Service.Image = new GeneratedImageDto { Id = "image-1", UserId = "user-1" };
             fixture.Service.StreamResult = (new MemoryStream(new byte[] { 1 }), "image/png");
 
             var result = Assert.IsType<FileStreamResult>(await fixture.Controller.DownloadImage("image-1"));

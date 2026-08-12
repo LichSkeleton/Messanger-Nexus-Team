@@ -184,10 +184,15 @@ namespace NexusTeam.Server.Tests.Services
         [Theory]
         [InlineData(false, "owner", typeof(NotFoundException))]
         [InlineData(true, "outsider", typeof(UnauthorizedException))]
-        public async Task DeleteChatAsync_RejectsMissingOrNonParticipant(bool exists, string userId, Type exceptionType)
+        [InlineData(true, "member", typeof(UnauthorizedException))]
+        public async Task DeleteChatAsync_RejectsMissingNonParticipantOrNonOwner(bool exists, string userId, Type exceptionType)
         {
             var fixture = new Fixture();
-            fixture.Chats.ById = exists ? Chat(ChatType.Group, "owner") : null;
+            fixture.Chats.ById = exists ? Chat(ChatType.Group, "owner", "member") : null;
+            if (fixture.Chats.ById != null)
+            {
+                fixture.Chats.ById.CreatedBy = "owner";
+            }
 
             await Assert.ThrowsAsync(exceptionType, () => fixture.Service.DeleteChatAsync("chat-1", userId));
         }

@@ -195,8 +195,19 @@ namespace NexusTeam.Server.Services
         }
 
         /// <inheritdoc/>
-        public async Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default)
         {
+            var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
+            if (chat == null)
+            {
+                throw new NotFoundException($"Chat with ID '{chatId}' not found.");
+            }
+
+            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
+            {
+                throw new UnauthorizedException("You are not a participant of this chat.");
+            }
+
             var cacheKey = $"chat:messages:{chatId}:{limit}:{offset}";
             var cached = await this.cacheService.GetAsync<List<MessageDto>>(cacheKey, cancellationToken);
 
@@ -310,6 +321,17 @@ namespace NexusTeam.Server.Services
                 throw new ValidationException($"Message {messageId} not found");
             }
 
+            var chat = await this.chatRepository.GetByIdAsync(message.ChatId, cancellationToken);
+            if (chat == null)
+            {
+                throw new ValidationException($"Chat {message.ChatId} not found");
+            }
+
+            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
+            {
+                throw new UnauthorizedException("You are not a participant of this chat.");
+            }
+
             // Initialize reactions dictionary if null
             if (message.Reactions == null)
             {
@@ -342,6 +364,17 @@ namespace NexusTeam.Server.Services
             if (message == null)
             {
                 throw new ValidationException($"Message {messageId} not found");
+            }
+
+            var chat = await this.chatRepository.GetByIdAsync(message.ChatId, cancellationToken);
+            if (chat == null)
+            {
+                throw new ValidationException($"Chat {message.ChatId} not found");
+            }
+
+            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
+            {
+                throw new UnauthorizedException("You are not a participant of this chat.");
             }
 
             // Remove user from reaction list

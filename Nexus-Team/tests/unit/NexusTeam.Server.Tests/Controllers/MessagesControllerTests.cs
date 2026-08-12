@@ -38,7 +38,7 @@ namespace NexusTeam.Server.Tests.Controllers
             public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task<string> DeleteMessageAsync(string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-            public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task MarkAsDeliveredAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task MarkAsReadAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task<IEnumerable<MessageDto>> SearchMessagesAsync(string chatId, string query, CancellationToken cancellationToken = default) { this.SearchCall = (chatId, query); return Task.FromResult<IEnumerable<MessageDto>>(Array.Empty<MessageDto>()); }

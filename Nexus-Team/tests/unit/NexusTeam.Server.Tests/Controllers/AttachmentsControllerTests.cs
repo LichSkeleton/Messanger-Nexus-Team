@@ -18,6 +18,13 @@ namespace NexusTeam.Server.Tests.Controllers
     public class AttachmentsControllerTests
     {
         [Fact]
+        public async Task UploadAttachmentAsync_RequiresAuthentication()
+        {
+            var controller = CreateController(new FakeAttachments(), userId: null);
+            Assert.IsType<UnauthorizedResult>((await controller.UploadAttachmentAsync(File("photo.png", 1, new byte[] { 1 }), "m1", default)).Result);
+        }
+
+        [Fact]
         public async Task UploadAttachmentAsync_RejectsEmptyDisallowedAndOversizedFiles()
         {
             var controller = CreateController(new FakeAttachments());
@@ -50,7 +57,7 @@ namespace NexusTeam.Server.Tests.Controllers
             var service = new FakeAttachments();
             var controller = CreateController(service);
             Assert.IsType<NotFoundObjectResult>(await controller.DownloadAttachmentAsync("a1", default));
-            service.Result = new MessageAttachmentDto { Id = "a1", FileName = "file.txt", ContentType = "text/plain" };
+            service.Result = new MessageAttachmentDto { Id = "a1", FileName = "file.txt", ContentType = "text/plain", MessageId = "m1" };
             Assert.IsType<NotFoundObjectResult>(await controller.DownloadAttachmentAsync("a1", default));
             service.Stream = new MemoryStream(new byte[] { 1 });
             var file = Assert.IsType<FileStreamResult>(await controller.DownloadAttachmentAsync("a1", default));
@@ -64,7 +71,7 @@ namespace NexusTeam.Server.Tests.Controllers
             var service = new FakeAttachments();
             var controller = CreateController(service);
             Assert.IsType<NotFoundObjectResult>(await controller.DownloadThumbnailAsync("a1", default));
-            service.Result = new MessageAttachmentDto { Id = "a1" };
+            service.Result = new MessageAttachmentDto { Id = "a1", MessageId = "m1" };
             service.Thumbnail = new MemoryStream(new byte[] { 1 });
             var file = Assert.IsType<FileStreamResult>(await controller.DownloadThumbnailAsync("a1", default));
             Assert.Equal("image/jpeg", file.ContentType);
@@ -86,10 +93,8 @@ namespace NexusTeam.Server.Tests.Controllers
             var service = new FakeAttachments();
             var controller = CreateController(service);
             Assert.IsType<BadRequestObjectResult>((await controller.UpdateAttachmentAsync("a1", File("bad.exe", 1), default)).Result);
-            service.Error = new InvalidOperationException("missing");
-            Assert.IsType<NotFoundObjectResult>((await controller.UpdateAttachmentAsync("a1", File("ok.txt", 1, new byte[] { 1 }), default)).Result);
-            service.Error = null;
-            service.Result = new MessageAttachmentDto { Id = "a1" };
+            Assert.IsType<NotFoundResult>((await controller.UpdateAttachmentAsync("a1", File("ok.txt", 1, new byte[] { 1 }), default)).Result);
+            service.Result = new MessageAttachmentDto { Id = "a1", MessageId = "m1" };
             Assert.IsType<OkObjectResult>((await controller.UpdateAttachmentAsync("a1", File("ok.txt", 1, new byte[] { 1 }), default)).Result);
         }
 
@@ -98,6 +103,8 @@ namespace NexusTeam.Server.Tests.Controllers
         {
             var service = new FakeAttachments();
             var controller = CreateController(service);
+            Assert.IsType<NotFoundResult>(await controller.DeleteAttachmentAsync("a1", default));
+            service.Result = new MessageAttachmentDto { Id = "a1", MessageId = "m1" };
             Assert.IsType<NotFoundObjectResult>(await controller.DeleteAttachmentAsync("a1", default));
             service.DeleteResult = true;
             Assert.IsType<NoContentResult>(await controller.DeleteAttachmentAsync("a1", default));
@@ -108,8 +115,28 @@ namespace NexusTeam.Server.Tests.Controllers
         private static IFormFile File(string name, long length, byte[]? bytes = null)
             => new FormFile(new MemoryStream(bytes ?? Array.Empty<byte>()), 0, length, "file", name) { Headers = new HeaderDictionary(), ContentType = "application/octet-stream" };
 
-        private static AttachmentsController CreateController(FakeAttachments service)
-            => new AttachmentsController(service, new NullMessages(), new NullChats(), new NullConnections(), new LoggerConfiguration().CreateLogger());
+        private static AttachmentsController CreateController(FakeAttachments service, string? userId = "user-1")
+        {
+            var controller = new AttachmentsController(
+                service,
+                new StubMessages(),
+                new StubChats(),
+                new NullConnections(),
+                new LoggerConfiguration().CreateLogger())
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext(),
+                },
+            };
+
+            if (userId != null)
+            {
+                controller.HttpContext.Items["UserId"] = userId;
+            }
+
+            return controller;
+        }
 
         private sealed class FakeAttachments : IAttachmentService
         {
@@ -129,21 +156,45 @@ namespace NexusTeam.Server.Tests.Controllers
             public Task<bool> DeleteAttachmentAsync(string attachmentId, CancellationToken cancellationToken = default) => Task.FromResult(this.Return(this.DeleteResult));
         }
 
-        private sealed class NullMessages : IMessageService
+        private sealed class StubMessages : IMessageService
         {
-            public Task<MessageDto?> GetMessageByIdAsync(string messageId, CancellationToken cancellationToken = default) => Task.FromResult<MessageDto?>(null);
-            public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<string> DeleteMessageAsync(string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task MarkAsDeliveredAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task MarkAsReadAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<IEnumerable<MessageDto>> SearchMessagesAsync(string chatId, string query, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<MessageDto> AddReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<MessageDto> RemoveReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<MessageDto?> GetMessageByIdAsync(string messageId, CancellationToken cancellationToken = default)
+                => Task.FromResult<MessageDto?>(new MessageDto { Id = messageId, ChatId = "chat-1" });
+
+            public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<string> DeleteMessageAsync(string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task MarkAsDeliveredAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task MarkAsReadAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<IEnumerable<MessageDto>> SearchMessagesAsync(string chatId, string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<MessageDto> AddReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<MessageDto> RemoveReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         }
 
-        private sealed class NullChats : IChatService
+        private sealed class StubChats : IChatService
         {
-            public Task<ChatDto?> GetChatByIdAsync(string chatId, string userId, CancellationToken cancellationToken = default) => Task.FromResult<ChatDto?>(null);
-            public Task<IEnumerable<ChatDto>> GetUserChatsAsync(string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<ChatDto> UpdateChatAsync(string chatId, string userId, UpdateChatRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<ChatDto> UploadChatAvatarAsync(string chatId, string userId, string fileName, Stream fileStream, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto?> GetChatByIdAsync(string chatId, string userId, CancellationToken cancellationToken = default)
+                => Task.FromResult<ChatDto?>(new ChatDto { Id = chatId, ParticipantIds = new List<string> { userId } });
+
+            public Task<IEnumerable<ChatDto>> GetUserChatsAsync(string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> UpdateChatAsync(string chatId, string userId, UpdateChatRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> UploadChatAvatarAsync(string chatId, string userId, string fileName, Stream fileStream, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         }
 
         private sealed class NullConnections : IWebSocketConnectionManager
         {
-            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask; public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public void AddConnection(string userId, WebSocket socket, string connectionId) { }
+            public void RemoveConnection(string connectionId) { }
+            public WebSocket? GetSocketByConnectionId(string connectionId) => null;
+            public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>();
+            public string? GetUserIdByConnectionId(string connectionId) => null;
+            public IEnumerable<string> GetConnectedUserIds() => Array.Empty<string>();
+            public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
     }
 }

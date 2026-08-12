@@ -110,6 +110,12 @@ namespace NexusTeam.Server.Controllers
             [FromQuery] int offset = 0,
             CancellationToken cancellationToken = default)
         {
+            var userId = this.HttpContext.Items["UserId"] as string;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return this.Unauthorized();
+            }
+
             if (limit <= 0 || limit > 100)
             {
                 limit = 50;
@@ -120,8 +126,19 @@ namespace NexusTeam.Server.Controllers
                 offset = 0;
             }
 
-            var messages = await this.messageService.GetChatMessagesAsync(id, limit, offset, cancellationToken);
-            return this.Ok(messages);
+            try
+            {
+                var messages = await this.messageService.GetChatMessagesAsync(id, userId, limit, offset, cancellationToken);
+                return this.Ok(messages);
+            }
+            catch (Shared.Exceptions.UnauthorizedException)
+            {
+                return this.Unauthorized();
+            }
+            catch (Shared.Exceptions.NotFoundException)
+            {
+                return this.NotFound();
+            }
         }
 
         /// <summary>
@@ -314,6 +331,10 @@ namespace NexusTeam.Server.Controllers
 
                 return this.Ok(message);
             }
+            catch (Shared.Exceptions.UnauthorizedException)
+            {
+                return this.Unauthorized();
+            }
             catch (Shared.Exceptions.ValidationException ex)
             {
                 this.logger.Warning("Validation error adding reaction: {Message}", ex.Message);
@@ -391,6 +412,10 @@ namespace NexusTeam.Server.Controllers
 
                 return this.Ok(message);
             }
+            catch (Shared.Exceptions.UnauthorizedException)
+            {
+                return this.Unauthorized();
+            }
             catch (Shared.Exceptions.ValidationException ex)
             {
                 this.logger.Warning("Validation error removing reaction: {Message}", ex.Message);
@@ -428,7 +453,7 @@ namespace NexusTeam.Server.Controllers
                     var envelope = new WebSocketMessageEnvelope
                     {
                         Type = WebSocketMessageType.ChatDeleted,
-                        Payload = JsonSerializer.SerializeToElement(new { ChatId = id }, options),
+                        Payload = JsonSerializer.SerializeToElement(new ChatDeletedPayload { ChatId = id }, options),
                     };
 
                     var messageJson = JsonSerializer.Serialize(envelope, options);

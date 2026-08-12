@@ -131,6 +131,14 @@ namespace NexusTeam.Server.Services
 
             var chatDto = this.MapToDto(chat);
 
+            // Internal system callers bypass membership; API callers must be participants.
+            if (!string.Equals(userId, "system", StringComparison.Ordinal)
+                && (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId)))
+            {
+                this.logger.Warning("User {UserId} is not a participant of chat {ChatId}", userId, chatId);
+                return null;
+            }
+
             // Populate participant details for all chat types
             if (chat.ParticipantIds.Any())
             {
@@ -409,6 +417,13 @@ namespace NexusTeam.Server.Services
             {
                 this.logger.Warning("User {UserId} is not a participant of chat {ChatId}", userId, chatId);
                 throw new UnauthorizedException("You are not a participant of this chat.");
+            }
+
+            // Groups/channels: only the owner may delete the entire chat
+            if (chat.Type != NexusTeam.Shared.Enums.ChatType.DirectMessage && chat.CreatedBy != userId)
+            {
+                this.logger.Warning("User {UserId} attempted to delete chat {ChatId} without ownership", userId, chatId);
+                throw new UnauthorizedException("Only the group owner can delete the entire group.");
             }
 
             try

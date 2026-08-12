@@ -41,9 +41,11 @@ namespace NexusTeam.Server.Tests.Controllers
         [InlineData(20, 2, 20, 2)]
         public async Task GetChatMessages_NormalizesPagination(int limit, int offset, int expectedLimit, int expectedOffset)
         {
-            var fixture = new Fixture();
+            Assert.IsType<UnauthorizedResult>((await new Fixture().Controller.GetChatMessages("chat-1", limit, offset)).Result);
+            var fixture = new Fixture("user-1");
             Assert.IsType<OkObjectResult>((await fixture.Controller.GetChatMessages("chat-1", limit, offset)).Result);
             Assert.Equal((expectedLimit, expectedOffset), fixture.Messages.Page);
+            Assert.Equal("user-1", fixture.Messages.UserId);
         }
 
         [Fact]
@@ -165,7 +167,7 @@ namespace NexusTeam.Server.Tests.Controllers
         {
             public (int, int)? Page { get; private set; } public string? UserId { get; private set; } public string? Emoji { get; private set; } public ValidationException? Error { get; set; }
             private Task<MessageDto> Result() => this.Error == null ? Task.FromResult(new MessageDto { Id = "m1" }) : Task.FromException<MessageDto>(this.Error);
-            public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) { this.UserId = senderId; return this.Result(); } public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default) { this.Page = (limit, offset); return Task.FromResult<IEnumerable<MessageDto>>(Array.Empty<MessageDto>()); } public Task<MessageDto> AddReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); } public Task<MessageDto> RemoveReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); }
+            public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) { this.UserId = senderId; return this.Result(); } public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default) { this.Page = (limit, offset); this.UserId = userId; return Task.FromResult<IEnumerable<MessageDto>>(Array.Empty<MessageDto>()); } public Task<MessageDto> AddReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); } public Task<MessageDto> RemoveReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); }
             public Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<string> DeleteMessageAsync(string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task MarkAsDeliveredAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task MarkAsReadAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<IEnumerable<MessageDto>> SearchMessagesAsync(string chatId, string query, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<MessageDto?> GetMessageByIdAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         }
 
@@ -176,7 +178,7 @@ namespace NexusTeam.Server.Tests.Controllers
 
         private sealed class Connections : IWebSocketConnectionManager
         {
-            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask; public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public void AddConnection(string userId, WebSocket socket, string connectionId) { } public void RemoveConnection(string connectionId) { } public WebSocket? GetSocketByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectionIdsByUserId(string userId) => Array.Empty<string>(); public string? GetUserIdByConnectionId(string connectionId) => null; public IEnumerable<string> GetConnectedUserIds() => Array.Empty<string>(); public Task SendMessageAsync(string connectionId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask; public Task BroadcastToUserAsync(string userId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
     }
 }

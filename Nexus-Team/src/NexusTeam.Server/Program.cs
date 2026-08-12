@@ -55,6 +55,11 @@ namespace NexusTeam.Server
 
                 var builder = WebApplication.CreateBuilder(args);
 
+                builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
+                {
+                    options.AddServerHeader = false;
+                });
+
                 // Configure Serilog logging
                 builder.AddSerilogLogging();
 
