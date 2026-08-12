@@ -22,8 +22,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-suites-${{ github.ref }}
-  cancel-in-progress: false
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit-tests:
@@ -101,6 +101,9 @@ jobs:
       always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
       && needs.unit-tests.outputs.badge != ''
     runs-on: ubuntu-24.04
+    concurrency:
+      group: test-badge-publisher
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
