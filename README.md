@@ -21,35 +21,6 @@
 
 ---
 
-## Automated tests
-
-The test suites run entirely in Docker, so no local .NET SDK is required.
-
-| Suite | Current result | Live status |
-|-------|----------------|-------------|
-| Unit | Dynamic badge above | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml) |
-| End-to-end | Dynamic badge above | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml) |
-
-Known regressions remain executable as non-blocking visibility checks and are
-tracked with acceptance criteria in [`Nexus-Team/TODO.md`](Nexus-Team/TODO.md).
-The required green baselines fail the workflow when a previously passing test
-regresses. After successful runs on `main`, Actions parses the actual test
-runner summaries and publishes fresh `passed/total` badge data automatically.
-
-Run either suite locally with:
-
-```bash
-cd Nexus-Team
-docker compose run --rm --build -e TEST_FILTER="Category!=Regression" unit-test
-docker compose --profile e2e-test run --rm --build \
-  -e TEST_FILTER="Category!=Regression" e2e-test
-```
-
-Remove `TEST_FILTER` to run the full suite, including the documented failing
-regression cases.
-
----
-
 ## Run
 
 The **entire application — databases, the .NET Web API, and the responsive web client — runs in Docker with a single command.** You do not need to install .NET, run `dotnet run`, or use the Windows WPF client. Everything is containerized so it deploys the same way on any machine.
@@ -319,6 +290,35 @@ Enterprise-grade security throughout: JWT auth with refresh tokens, BCrypt passw
 ## License
 
 Licensed under the MIT License — see [LICENSE](LICENSE).
+
+---
+
+## Automated tests
+
+The test suites run entirely in Docker, so no local .NET SDK is required.
+
+| Suite | Current result | Live status |
+|-------|----------------|-------------|
+| Unit | Dynamic badge above | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/unit-tests.yml) |
+| End-to-end | Dynamic badge above | [GitHub Actions](https://github.com/LichSkeleton/Messanger-Nexus-Team/actions/workflows/e2e-tests.yml) |
+
+Known regressions remain executable as non-blocking visibility checks and are
+tracked with acceptance criteria in [`Nexus-Team/TODO.md`](Nexus-Team/TODO.md).
+The required green baselines fail the workflow when a previously passing test
+regresses. After successful runs on `main`, Actions parses the actual test
+runner summaries and publishes fresh `passed/total` badge data automatically.
+
+Run either suite locally with:
+
+```bash
+cd Nexus-Team
+docker compose run --rm --build -e TEST_FILTER="Category!=Regression" unit-test
+docker compose --profile e2e-test run --rm --build \
+  -e TEST_FILTER="Category!=Regression" e2e-test
+```
+
+Remove `TEST_FILTER` to run the full suite, including the documented failing
+regression cases.
 
 ---
 
