@@ -14,6 +14,163 @@ name: nexus-team
 
 services:
   # ===========================================================================
+  # Unit Tests - runs only when explicitly targeted.
+  #
+  #   docker compose run --rm --build unit-test
+  #
+  # The profile keeps this service out of the regular application stack. It
+  # has no service dependencies because this suite contains unit tests only.
+  # ===========================================================================
+  unit-test:
+    profiles: [ "unit-test" ]
+    build:
+      context: .
+      dockerfile: Dockerfile.unit-test
+    image: nexusteam/unit-tests:local
+    container_name: nexusteam_unit_tests
+    restart: no
+
+  # ===========================================================================
+  # End-to-End Tests - exercises the running API, WebSockets and data stores.
+  #
+  #   docker compose --profile e2e-test run --rm --build e2e-test
+  #
+  # Unlike unit-test, this service intentionally starts the complete backend
+  # dependency chain and waits for the API health check before executing.
+  # ===========================================================================
+  e2e-test:
+    profiles: [ "e2e-test" ]
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e-test
+    image: nexusteam/e2e-tests:local
+    container_name: nexusteam_e2e_tests
+    depends_on:
+      server-e2e:
+        condition: service_healthy
+    environment:
+      E2E_BASE_URL: "http://server-e2e:5251"
+      E2E_WS_URL: "ws://server-e2e:5251/ws"
+      E2E_JWT_SECRET: "${JWT_SECRET:-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6}"
+      E2E_JWT_ISSUER: "NexusTeamServer"
+      E2E_JWT_AUDIENCE: "NexusTeamClient"
+    restart: no
+    networks:
+      - nexusteam_network
+
+  redis-e2e:
+    profiles: [ "e2e-test" ]
+    image: redis:7-alpine
+    container_name: nexusteam_redis_e2e
+    command: redis-server --appendonly no --save ""
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: no
+    networks:
+      - nexusteam_network
+
+  mongo-e2e:
+    profiles: [ "e2e-test" ]
+    image: mongo:7
+    container_name: nexusteam_mongo_e2e
+    command: mongod --bind_ip_all --dbpath /data/db
+    volumes:
+      - mongo_e2e_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: no
+    networks:
+      - nexusteam_network
+
+  oracle-e2e:
+    profiles: [ "e2e-test" ]
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: nexusteam_oracle_e2e
+    environment:
+      ORACLE_PASSWORD: "e2e_sys_password"
+      APP_USER: "nexusteam_e2e"
+      APP_USER_PASSWORD: "e2e_app_password"
+    volumes:
+      - oracle_e2e_data:/opt/oracle/oradata
+    shm_size: "1gb"
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh" ]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    stop_grace_period: 60s
+    restart: no
+    networks:
+      - nexusteam_network
+
+  db-seeder-e2e:
+    profiles: [ "e2e-test" ]
+    build:
+      context: .
+      dockerfile: src/NexusTeam.DbSeeder/Dockerfile
+    image: nexusteam/db-seeder-e2e:local
+    container_name: nexusteam_db_seeder_e2e
+    depends_on:
+      oracle-e2e:
+        condition: service_healthy
+      mongo-e2e:
+        condition: service_healthy
+      redis-e2e:
+        condition: service_healthy
+    environment:
+      MONGODB_CONNECTION_STRING: "mongodb://mongo-e2e:27017"
+      MONGODB_DATABASE: "NexusTeamE2E"
+      ORACLE_CONNECTION_STRING: "Data Source=oracle-e2e:1521/FREEPDB1;User Id=nexusteam_e2e;Password=e2e_app_password;"
+      REDIS_CONNECTION_STRING: "redis-e2e:6379,abortConnect=false,allowAdmin=true"
+      CONFIG_PATH: "/app/configs"
+      RETRY_COUNT: "30"
+      RETRY_DELAY_SECONDS: "3"
+      ENABLE_SHARDING: "false"
+      SHARD_COLLECTIONS: ""
+    volumes:
+      - ./config:/app/configs:ro
+    restart: no
+    networks:
+      - nexusteam_network
+
+  server-e2e:
+    profiles: [ "e2e-test" ]
+    build:
+      context: .
+      dockerfile: src/NexusTeam.Server/Dockerfile
+    image: nexusteam/server-e2e:local
+    container_name: nexusteam_server_e2e
+    depends_on:
+      db-seeder-e2e:
+        condition: service_completed_successfully
+    environment:
+      Oracle__ConnectionString: "User Id=nexusteam_e2e;Password=e2e_app_password;Data Source=oracle-e2e:1521/FREEPDB1"
+      MongoDB__ConnectionString: "mongodb://mongo-e2e:27017"
+      MongoDB__DatabaseName: "NexusTeamE2E"
+      Redis__ConnectionString: "redis-e2e:6379,abortConnect=false,allowAdmin=true"
+      Jwt__SecretKey: "${JWT_SECRET:-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6}"
+      Cors__AllowedOrigins__0: "http://e2e.invalid"
+      ASPNETCORE_ENVIRONMENT: "Production"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:5251/health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+    stop_grace_period: 15s
+    restart: no
+    networks:
+      - nexusteam_network
+
+  # ===========================================================================
   # Redis - Cache, Sessions, Presence
   # ===========================================================================
   redis:
@@ -354,6 +511,10 @@ volumes:
     name: nexusteam_mongo_shard1_data
   mongo_shard2_data:
     name: nexusteam_mongo_shard2_data
+  oracle_e2e_data:
+    name: nexusteam_oracle_e2e_data
+  mongo_e2e_data:
+    name: nexusteam_mongo_e2e_data
 
 networks:
   nexusteam_network:
