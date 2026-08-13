@@ -389,6 +389,33 @@ namespace NexusTeam.Client.Services
         }
 
         /// <inheritdoc/>
+        public async Task<string> DownloadAttachmentToTempAsync(
+            MessageAttachmentDto attachment,
+            CancellationToken cancellationToken = default)
+        {
+            var extension = Path.GetExtension(attachment.FileName);
+            var tempPath = Path.Combine(
+                Path.GetTempPath(),
+                $"nexusteam_preview_{Guid.NewGuid():N}{extension}");
+
+            try
+            {
+                using var stream = await this.DownloadImageStreamAsync(attachment, cancellationToken);
+                using var fileStream = File.Create(tempPath);
+                await stream.CopyToAsync(fileStream, cancellationToken);
+
+                this.logger.Information("Attachment downloaded for preview: {FileName} to {Path}", attachment.FileName, tempPath);
+                return tempPath;
+            }
+            catch (Exception ex)
+            {
+                this.TryDeleteTempFile(tempPath);
+                this.logger.Error(ex, "Failed to download attachment for preview: {AttachmentId}", attachment.Id);
+                throw;
+            }
+        }
+
+        /// <inheritdoc/>
         public async Task<Stream> DownloadThumbnailStreamAsync(
             MessageAttachmentDto attachment,
             CancellationToken cancellationToken = default)
@@ -456,6 +483,21 @@ namespace NexusTeam.Client.Services
             {
                 this.logger.Error(ex, "Error validating file: {FilePath}", filePath);
                 return (false, $"Error validating file: {ex.Message}");
+            }
+        }
+
+        private void TryDeleteTempFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (Exception ex)
+            {
+                this.logger.Warning(ex, "Failed to delete temp preview file: {Path}", path);
             }
         }
     }

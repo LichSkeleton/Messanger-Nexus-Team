@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=preview5" />
 </head>
 <body class="auth-mode">
     <!-- ===================== AUTH (login / register) ===================== -->
@@ -247,6 +247,21 @@
     <div id="lightbox" class="lightbox hidden"><img id="lightboxImg" alt="" /></div>
     <div id="toast" class="toast hidden"></div>
 
+    <!-- ===================== File preview modal ===================== -->
+    <div id="filePreviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
+        <div class="modal glass file-preview-modal">
+            <header class="modal-header">
+                <h2 id="filePreviewTitle">Preview</h2>
+                <button id="closeFilePreview" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <p id="filePreviewNotice" class="file-preview-notice hidden"></p>
+            <div id="filePreviewBody" class="file-preview-body hidden"></div>
+            <div class="file-preview-actions">
+                <button id="filePreviewDownload" class="btn-primary" type="button">Download</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===================== Confirm dialog ===================== -->
     <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <div class="modal glass confirm-modal">
@@ -331,6 +346,6 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=preview5"></script>
 </body>
 </html>

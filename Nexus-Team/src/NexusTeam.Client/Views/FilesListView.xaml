@@ -10,6 +10,7 @@
              TextOptions.TextFormattingMode="Display">
 
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <Style x:Key="GlassPanelBorderStyle" TargetType="Border">
             <Setter Property="CornerRadius" Value="24"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -191,6 +192,11 @@
                                             <StackPanel Grid.Column="2"
                                                         Orientation="Horizontal"
                                                         VerticalAlignment="Center">
+                                                <Button Content="Preview"
+                                                        Style="{StaticResource FileActionButtonStyle}"
+                                                        Command="{Binding DataContext.PreviewAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Visibility="{Binding CanPreview, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                                 <Button Content="Save As"
                                                         Style="{StaticResource FileActionButtonStyle}"
                                                         Command="{Binding DataContext.SaveAttachmentAsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"

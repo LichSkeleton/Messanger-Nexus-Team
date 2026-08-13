@@ -28,6 +28,7 @@ namespace NexusTeam.Client.ViewModels
         private readonly IUserDirectoryService userDirectoryService;
         private readonly IErrorHandlingService errorHandlingService;
         private readonly IFileAttachmentService fileAttachmentService;
+        private readonly IAttachmentPreviewService attachmentPreviewService;
         private readonly IImageCompressionService imageCompressionService;
         private readonly IAvatarService avatarService;
         private readonly INavigationService navigationService;
@@ -97,6 +98,7 @@ namespace NexusTeam.Client.ViewModels
         /// <param name="userDirectoryService">The user directory service.</param>
         /// <param name="errorHandlingService">The error handling service.</param>
         /// <param name="fileAttachmentService">The file attachment service.</param>
+        /// <param name="attachmentPreviewService">The attachment preview service.</param>
         /// <param name="imageCompressionService">The image compression service.</param>
         /// <param name="avatarService">The avatar service.</param>
         /// <param name="navigationService">The navigation service.</param>
@@ -110,6 +112,7 @@ namespace NexusTeam.Client.ViewModels
             IUserDirectoryService userDirectoryService,
             IErrorHandlingService errorHandlingService,
             IFileAttachmentService fileAttachmentService,
+            IAttachmentPreviewService attachmentPreviewService,
             IImageCompressionService imageCompressionService,
             IAvatarService avatarService,
             INavigationService navigationService,
@@ -123,6 +126,7 @@ namespace NexusTeam.Client.ViewModels
             this.userDirectoryService = userDirectoryService;
             this.errorHandlingService = errorHandlingService;
             this.fileAttachmentService = fileAttachmentService;
+            this.attachmentPreviewService = attachmentPreviewService;
             this.imageCompressionService = imageCompressionService;
             this.avatarService = avatarService;
             this.navigationService = navigationService;
@@ -1224,61 +1228,27 @@ namespace NexusTeam.Client.ViewModels
         }
 
         /// <summary>
-        /// Command to preview code file.
+        /// Command to preview a supported attachment before downloading.
         /// </summary>
         [RelayCommand]
-        private async Task PreviewCodeAsync(AttachmentViewModel attachment)
+        private async Task PreviewAttachmentAsync(AttachmentViewModel attachment)
         {
-            if (attachment.AttachmentDto == null || !attachment.IsCodeFile)
+            if (attachment.AttachmentDto == null)
             {
                 return;
             }
 
             try
             {
-                var filePath = await this.fileAttachmentService.DownloadAttachmentAsync(attachment.AttachmentDto);
-                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-                {
-                    this.errorHandlingService.ShowError("Failed to download code file for preview.");
-                    return;
-                }
-
-                var codeContent = await File.ReadAllTextAsync(filePath);
-
-                // Find the message that contains this attachment to get messageId and chatId
-                string? messageId = attachment.AttachmentDto.MessageId;
-                string? chatId = this.SelectedConversation?.Id;
-
-                // Try to find message in current conversation
-                if (string.IsNullOrEmpty(messageId) || string.IsNullOrEmpty(chatId))
-                {
-                    var message = this.GetMessageViewModels()
-                        .FirstOrDefault(m => m.Attachments.Any(a => a.AttachmentDto?.Id == attachment.AttachmentDto.Id));
-                    if (message != null)
-                    {
-                        messageId = message.Id;
-                        chatId = message.ChatId;
-                    }
-                }
-
-                var previewWindow = new Views.CodePreviewWindow
-                {
-                    Owner = Application.Current.MainWindow,
-                };
-                previewWindow.LoadCode(
-                    codeContent,
-                    attachment.FileName,
-                    attachment.AttachmentDto.Id,
-                    messageId,
-                    chatId,
-                    this.fileAttachmentService,
-                    this.messagingService);
-                previewWindow.ShowDialog();
+                await this.attachmentPreviewService.PreviewAsync(
+                    attachment,
+                    this.SelectedConversation?.Id,
+                    Application.Current?.MainWindow);
             }
             catch (Exception ex)
             {
-                this.logger.Error(ex, "Failed to preview code file");
-                this.errorHandlingService.ShowError($"Failed to preview code: {ex.Message}");
+                this.logger.Error(ex, "Failed to preview attachment: {FileName}", attachment.FileName);
+                this.errorHandlingService.ShowError($"Failed to preview file: {ex.Message}");
             }
         }
 

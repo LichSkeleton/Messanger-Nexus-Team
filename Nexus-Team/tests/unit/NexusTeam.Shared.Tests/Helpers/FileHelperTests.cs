@@ -143,5 +143,47 @@ namespace NexusTeam.Shared.Tests.Helpers
 
             Assert.True(result);
         }
+
+        [Theory]
+        [InlineData("notes.pdf")]
+        [InlineData("essay.DOCX")]
+        [InlineData("readme.txt")]
+        [InlineData("spec.md")]
+        [InlineData("Program.cs")]
+        [InlineData("app.py")]
+        public void IsPreviewableFile_WithSupportedType_ReturnsTrue(string fileName)
+        {
+            Assert.True(FileHelper.IsPreviewableFile(fileName));
+        }
+
+        [Theory]
+        [InlineData("archive.zip")]
+        [InlineData("movie.mp4")]
+        [InlineData("photo.png")]
+        [InlineData("legacy.doc")]
+        [InlineData("")]
+        public void IsPreviewableFile_WithUnsupportedType_ReturnsFalse(string fileName)
+        {
+            Assert.False(FileHelper.IsPreviewableFile(fileName));
+        }
+
+        [Fact]
+        public void IsTooLargeForPreview_WhenAboveLimit_ReturnsTrue()
+        {
+            Assert.True(FileHelper.IsTooLargeForPreview(FileHelper.MaxPreviewFileSizeBytes + 1));
+        }
+
+        [Fact]
+        public void MaxUploadRequestBody_IsLargerThanMaxFileSize()
+        {
+            Assert.True(FileHelper.MaxUploadRequestBodyBytes > FileHelper.MaxFileSizeBytes);
+        }
+
+        [Fact]
+        public void IsTooLargeForPreview_WhenAtLimitOrUnknown_ReturnsFalse()
+        {
+            Assert.False(FileHelper.IsTooLargeForPreview(FileHelper.MaxPreviewFileSizeBytes));
+            Assert.False(FileHelper.IsTooLargeForPreview(0));
+        }
     }
 }

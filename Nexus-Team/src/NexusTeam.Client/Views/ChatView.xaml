@@ -624,26 +624,60 @@
                                     </Border.Style>
                                     <StackPanel>
                                         <!-- Hack: Use Grid with hidden TextBlock to force RichTextBox width to match content -->
-                                        <Grid Visibility="{Binding HasContent, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel Visibility="{Binding HasContent, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <!-- Hidden TextBlock that determines the size -->
-                                            <emoji:TextBlock x:Name="SizingTextBlock" 
-                                                             Text="{Binding Content}" 
-                                                             TextWrapping="Wrap" 
-                                                             Visibility="Hidden"
-                                                             Margin="0"
-                                                             Padding="5,0"/>
-                                            
-                                            <!-- RichTextBox bound to the TextBlock's width and font properties -->
-                                            <emoji:RichTextBox Style="{StaticResource SelectableMessageTextStyle}"
-                                                               helpers:RichTextBoxHelper.DocumentText="{Binding Content}"
-                                                               Width="{Binding ElementName=SizingTextBlock, Path=ActualWidth}"
-                                                               FontFamily="{Binding ElementName=SizingTextBlock, Path=FontFamily}"
-                                                               FontSize="{Binding ElementName=SizingTextBlock, Path=FontSize}"
-                                                               FontWeight="{Binding ElementName=SizingTextBlock, Path=FontWeight}"
-                                                               FontStyle="{Binding ElementName=SizingTextBlock, Path=FontStyle}"
-                                                               FontStretch="{Binding ElementName=SizingTextBlock, Path=FontStretch}"
-                                                               Opacity="{Binding IsDeleted, Converter={StaticResource BooleanToOpacityConverter}}"/>
-                                        </Grid>
+                                            <Grid>
+                                                <emoji:TextBlock x:Name="SizingTextBlock" 
+                                                                 Text="{Binding DisplayContent}" 
+                                                                 TextWrapping="Wrap" 
+                                                                 Visibility="Hidden"
+                                                                 Margin="0"
+                                                                 Padding="5,0"/>
+                                                
+                                                <!-- RichTextBox bound to the TextBlock's width and font properties -->
+                                                <emoji:RichTextBox Style="{StaticResource SelectableMessageTextStyle}"
+                                                                   helpers:RichTextBoxHelper.DocumentText="{Binding DisplayContent}"
+                                                                   Width="{Binding ElementName=SizingTextBlock, Path=ActualWidth}"
+                                                                   FontFamily="{Binding ElementName=SizingTextBlock, Path=FontFamily}"
+                                                                   FontSize="{Binding ElementName=SizingTextBlock, Path=FontSize}"
+                                                                   FontWeight="{Binding ElementName=SizingTextBlock, Path=FontWeight}"
+                                                                   FontStyle="{Binding ElementName=SizingTextBlock, Path=FontStyle}"
+                                                                   FontStretch="{Binding ElementName=SizingTextBlock, Path=FontStretch}"
+                                                                   Opacity="{Binding IsDeleted, Converter={StaticResource BooleanToOpacityConverter}}"/>
+                                            </Grid>
+                                            <Button Content="{Binding ReadMoreButtonText}"
+                                                    Command="{Binding ToggleContentExpansionCommand}"
+                                                    Visibility="{Binding NeedsReadMore, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Padding="5,4,5,0"
+                                                    Margin="0"
+                                                    Cursor="Hand"
+                                                    HorizontalAlignment="Left"
+                                                    FontSize="12"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="#A8C7FA">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <TextBlock Text="{TemplateBinding Content}"
+                                                                   Foreground="{TemplateBinding Foreground}"
+                                                                   FontSize="{TemplateBinding FontSize}"
+                                                                   FontWeight="{TemplateBinding FontWeight}"
+                                                                   Cursor="Hand"/>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Foreground" Value="#A8C7FA"/>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </StackPanel>
                                         
                                         <!-- Attachments Section -->
                                         <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,8,0,0" Visibility="{Binding HasAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -750,14 +784,14 @@
                                                                     <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                                                 </Button>
                                                                 
-                                                                <!-- Preview Code Button -->
+                                                                <!-- Preview Button (code, PDF, Word, text) -->
                                                                 <Button Grid.Column="4" 
-                                                                        Command="{Binding DataContext.PreviewCodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                                        Command="{Binding DataContext.PreviewAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
                                                                         CommandParameter="{Binding}" 
                                                                         Background="Transparent" BorderThickness="0" 
                                                                         Width="30" Height="30" Margin="5,0,0,0" Cursor="Hand"
-                                                                        Visibility="{Binding IsCodeFile, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                                        ToolTip="Preview Code">
+                                                                        Visibility="{Binding CanPreview, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                        ToolTip="Preview">
                                                                     <TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{DynamicResource CodePreviewBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                                                 </Button>
                                                                 

@@ -78,7 +78,12 @@
         // editing
         editingMessageId: null,
         // recording
-        recorder: null, recChunks: [], recStream: null, recording: false, recDiscard: false
+        recorder: null, recChunks: [], recStream: null, recording: false, recDiscard: false,
+        previewObjectUrl: null,
+        previewDownloadUrl: null,
+        previewFileName: null,
+        authMediaCache: {},
+        authMediaPending: {}
     };
 
     // ---- DOM helpers ----------------------------------------------------------
@@ -87,9 +92,9 @@
     function hide(el) { el.classList.add("hidden"); }
 
     var toastTimer = null;
-    function toast(msg) {
+    function toast(msg, ms) {
         var t = $("toast"); t.textContent = msg; show(t);
-        clearTimeout(toastTimer); toastTimer = setTimeout(function () { hide(t); }, 3200);
+        clearTimeout(toastTimer); toastTimer = setTimeout(function () { hide(t); }, ms || 3200);
     }
 
     function escapeHtml(s) {
@@ -144,7 +149,9 @@
     // ---- HTTP -----------------------------------------------------------------
     function formatApiError(data, status) {
         if (!data) return "Request failed (" + status + ")";
-        if (typeof data === "string") return data;
+        if (typeof data === "string") {
+            try { data = JSON.parse(data); } catch (e) { return data; }
+        }
         // ASP.NET ProblemDetails validation errors: { errors: { Field: ["msg"] } }
         if (data.errors && typeof data.errors === "object") {
             var parts = [];
@@ -153,10 +160,20 @@
                 if (Array.isArray(vals)) parts = parts.concat(vals);
                 else if (vals) parts.push(String(vals));
             });
-            if (parts.length) return parts.join("; ");
+            if (parts.length) {
+                var joined = parts.join("; ");
+                if (/too large|max request body/i.test(joined)) {
+                    return "This file is too large. Maximum size is 100 MB.";
+                }
+                return joined;
+            }
         }
-        return data.error || data.errorMessage || data.title || data.detail ||
+        var fallback = data.error || data.errorMessage || data.title || data.detail ||
             ("Request failed (" + status + ")");
+        if (/too large|max request body/i.test(String(fallback))) {
+            return "This file is too large. Maximum size is 100 MB.";
+        }
+        return fallback;
     }
 
     function request(method, path, body, isForm) {
@@ -172,8 +189,8 @@
                 if (!res.ok) throw new Error("Request failed (" + res.status + ")");
                 return null;
             }
-            var ct = res.headers.get("content-type") || "";
-            var parse = ct.indexOf("application/json") !== -1 ? res.json() : res.text();
+            var ct = (res.headers.get("content-type") || "").toLowerCase();
+            var parse = ct.indexOf("json") !== -1 ? res.json() : res.text();
             return parse.then(function (data) {
                 if (!res.ok) throw new Error(formatApiError(data, res.status));
                 return data;
@@ -331,10 +348,7 @@
             var t = a.attachmentType;
             return t === "audio" || t === 2 || (a.contentType || "").indexOf("audio/") === 0;
         });
-        var hasImage = atts.some(function (a) {
-            var t = a.attachmentType;
-            return t === "image" || t === 0 || (a.contentType || "").indexOf("image/") === 0;
-        });
+        var hasImage = atts.some(function (a) { return isImageAttachment(a); });
         var hasVideo = atts.some(function (a) {
             var t = a.attachmentType;
             return t === "video" || t === 1 || (a.contentType || "").indexOf("video/") === 0;
@@ -594,27 +608,320 @@
         return /^https?:\/\/\S+\.(png|jpe?g|gif|webp|bmp|svg)(\?\S*)?$/i.test(s);
     }
 
+    var MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
+    var MAX_FILE_BYTES = 100 * 1024 * 1024;
+    var MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    var MSG_MAX_LEN = 480;
+    var MSG_MAX_LINES = 10;
+    var CODE_EXTS = {
+        cs: 1, js: 1, ts: 1, py: 1, java: 1, cpp: 1, c: 1, h: 1, hpp: 1, go: 1, rs: 1,
+        php: 1, rb: 1, swift: 1, kt: 1, scala: 1, html: 1, css: 1, json: 1, xml: 1,
+        yaml: 1, yml: 1, sql: 1, sh: 1, bat: 1, ps1: 1, jsx: 1, tsx: 1
+    };
+    var DOC_EXTS = { pdf: 1, docx: 1, txt: 1, md: 1 };
+    var IMAGE_EXTS = { jpg: 1, jpeg: 1, png: 1, gif: 1, webp: 1, bmp: 1, svg: 1 };
+
+    function fileExt(name) {
+        var i = String(name || "").lastIndexOf(".");
+        return i >= 0 ? String(name).slice(i + 1).toLowerCase() : "";
+    }
+
+    function isCodeFile(name) {
+        return !!CODE_EXTS[fileExt(name)];
+    }
+
+    function canPreviewFile(name, type) {
+        if (type === "code" || type === 5) return true;
+        var ext = fileExt(name);
+        return !!(CODE_EXTS[ext] || DOC_EXTS[ext]);
+    }
+
+    function needsReadMore(text) {
+        if (!text) return false;
+        if (text.length > MSG_MAX_LEN) return true;
+        return text.split(/\n/).length > MSG_MAX_LINES;
+    }
+
+    function collapseText(text) {
+        var normalized = String(text).replace(/\r\n/g, "\n");
+        var lines = normalized.split("\n");
+        var limited = lines.length > MSG_MAX_LINES ? lines.slice(0, MSG_MAX_LINES).join("\n") : normalized;
+        if (limited.length <= MSG_MAX_LEN) return limited.replace(/\s+$/, "") + "...";
+        var cut = limited.slice(0, MSG_MAX_LEN);
+        var lastSpace = cut.lastIndexOf(" ");
+        if (lastSpace >= MSG_MAX_LEN / 2) cut = cut.slice(0, lastSpace);
+        return cut.replace(/\s+$/, "") + "...";
+    }
+
+    function renderMessageText(content, cls) {
+        if (!needsReadMore(content)) {
+            return '<span class="' + cls + '">' + escapeHtml(content) + '</span>';
+        }
+        return '<span class="' + cls + ' msg-body">' + escapeHtml(collapseText(content)) + '</span>' +
+            '<button type="button" class="read-more-btn" data-full="' + escapeHtml(content) + '">Read more</button>';
+    }
+
+    function fetchAuthBlob(url) {
+        var opts = { headers: {} };
+        if (state.token) opts.headers["Authorization"] = "Bearer " + state.token;
+        return fetch(url, opts).then(function (res) {
+            if (res.status === 401) { logout(); throw new Error("Session expired. Please sign in again."); }
+            if (!res.ok) throw new Error("Failed to load file (" + res.status + ")");
+            return res.blob();
+        });
+    }
+
+    function loadAuthUrl(url) {
+        if (!url) return Promise.reject(new Error("Missing file URL"));
+        if (url.indexOf("blob:") === 0 || url.indexOf("data:") === 0) return Promise.resolve(url);
+        if (state.authMediaCache[url]) return Promise.resolve(state.authMediaCache[url]);
+        if (state.authMediaPending[url]) return state.authMediaPending[url];
+        var pending = fetchAuthBlob(url).then(function (blob) {
+            var obj = URL.createObjectURL(blob);
+            state.authMediaCache[url] = obj;
+            delete state.authMediaPending[url];
+            return obj;
+        }).catch(function (err) {
+            delete state.authMediaPending[url];
+            throw err;
+        });
+        state.authMediaPending[url] = pending;
+        return pending;
+    }
+
+    function hydrateAuthMedia(root) {
+        var scope = root || document;
+        var nodes = scope.querySelectorAll ? scope.querySelectorAll("[data-auth-src]") : [];
+        Array.prototype.forEach.call(nodes, function (el) {
+            var url = el.getAttribute("data-auth-src");
+            if (!url || el.getAttribute("data-hydrated") === "1") return;
+            el.setAttribute("data-hydrated", "1");
+            loadAuthUrl(url).then(function (objUrl) {
+                el.src = objUrl;
+                if (el.tagName === "AUDIO" || el.tagName === "VIDEO") {
+                    try { el.load(); } catch (e) { /* ignore */ }
+                }
+            }).catch(function () {
+                el.classList.add("media-failed");
+            });
+        });
+    }
+
+    function isImageAttachment(a) {
+        var type = a.attachmentType;
+        if (type === "image" || type === 0 || type === "Image") return true;
+        if ((a.contentType || "").toLowerCase().indexOf("image/") === 0) return true;
+        return !!IMAGE_EXTS[fileExt(a.fileName)];
+    }
+
+    function triggerBlobDownload(blob, fileName) {
+        var obj = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = obj;
+        a.download = fileName || "file";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(obj); }, 1500);
+    }
+
+    function downloadAttachment(url, fileName) {
+        toast("Downloading…");
+        fetchAuthBlob(url)
+            .then(function (blob) { triggerBlobDownload(blob, fileName); })
+            .catch(function (err) { toast(err.message || "Download failed"); });
+    }
+
+    function xmlToPlainText(xml) {
+        return String(xml)
+            .replace(/<w:tab\/>/g, "\t")
+            .replace(/<w:br[^/]*\/>/g, "\n")
+            .replace(/<\/w:p>/g, "\n")
+            .replace(/<[^>]+>/g, "")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+    }
+
+    function findZipEntry(buffer, entryName) {
+        var view = new DataView(buffer);
+        var bytes = new Uint8Array(buffer);
+        var offset = 0;
+        while (offset + 30 < bytes.length) {
+            if (view.getUint32(offset, true) !== 0x04034b50) break;
+            var method = view.getUint16(offset + 8, true);
+            var compSize = view.getUint32(offset + 18, true);
+            var nameLen = view.getUint16(offset + 26, true);
+            var extraLen = view.getUint16(offset + 28, true);
+            var name = new TextDecoder("utf-8").decode(bytes.subarray(offset + 30, offset + 30 + nameLen));
+            var dataStart = offset + 30 + nameLen + extraLen;
+            if (name === entryName && compSize > 0) {
+                return { method: method, data: bytes.subarray(dataStart, dataStart + compSize) };
+            }
+            offset = dataStart + compSize;
+        }
+        return null;
+    }
+
+    function inflateRaw(uint8) {
+        if (typeof DecompressionStream === "undefined") {
+            return Promise.reject(new Error("This browser cannot unpack Word files."));
+        }
+        var stream = new Blob([uint8]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+        return new Response(stream).arrayBuffer();
+    }
+
+    function extractDocxText(arrayBuffer) {
+        var entry = findZipEntry(arrayBuffer, "word/document.xml");
+        if (!entry) return Promise.reject(new Error("Could not read this Word file."));
+        var ready = entry.method === 0
+            ? Promise.resolve(entry.data.buffer.slice(entry.data.byteOffset, entry.data.byteOffset + entry.data.byteLength))
+            : inflateRaw(entry.data);
+        return ready.then(function (buf) {
+            var xml = new TextDecoder("utf-8").decode(buf);
+            var text = xmlToPlainText(xml);
+            return text || "(Empty document)";
+        });
+    }
+
+    function revokePreviewUrl() {
+        if (state.previewObjectUrl) {
+            URL.revokeObjectURL(state.previewObjectUrl);
+            state.previewObjectUrl = null;
+        }
+    }
+
+    function closeFilePreview() {
+        hide($("filePreviewModal"));
+        revokePreviewUrl();
+        $("filePreviewBody").innerHTML = "";
+        hide($("filePreviewBody"));
+        hide($("filePreviewNotice"));
+        $("filePreviewNotice").textContent = "";
+        $("filePreviewModal").querySelector(".file-preview-modal").classList.remove("compact");
+        state.previewDownloadUrl = null;
+        state.previewFileName = null;
+    }
+
+    function showPreviewNotice(text) {
+        var el = $("filePreviewNotice");
+        el.textContent = text;
+        show(el);
+        hide($("filePreviewBody"));
+        $("filePreviewBody").innerHTML = "";
+        $("filePreviewModal").querySelector(".file-preview-modal").classList.add("compact");
+    }
+
+    function setPreviewBodyHtml(html) {
+        $("filePreviewBody").innerHTML = html;
+        if (html) {
+            show($("filePreviewBody"));
+            $("filePreviewModal").querySelector(".file-preview-modal").classList.remove("compact");
+        } else {
+            hide($("filePreviewBody"));
+        }
+    }
+
+    function openFilePreview(url, fileName, fileSize) {
+        state.previewDownloadUrl = url;
+        state.previewFileName = fileName;
+        $("filePreviewTitle").textContent = fileName || "Preview";
+        hide($("filePreviewNotice"));
+        $("filePreviewNotice").textContent = "";
+        show($("filePreviewModal"));
+
+        if (Number(fileSize) > MAX_PREVIEW_BYTES) {
+            showPreviewNotice(
+                "This file is too large to preview (" + formatSize(fileSize) +
+                "). Preview is limited to " + formatSize(MAX_PREVIEW_BYTES) +
+                ". Please download the file instead."
+            );
+            return;
+        }
+
+        setPreviewBodyHtml('<div class="file-preview-loading"><div class="spinner"></div></div>');
+
+        var ext = fileExt(fileName);
+        fetchAuthBlob(url).then(function (blob) {
+            if (ext === "pdf") {
+                revokePreviewUrl();
+                var pdfBlob = blob.type && blob.type.indexOf("pdf") !== -1
+                    ? blob
+                    : new Blob([blob], { type: "application/pdf" });
+                state.previewObjectUrl = URL.createObjectURL(pdfBlob);
+                setPreviewBodyHtml('<iframe class="file-preview-frame" title="PDF preview" src="' +
+                    state.previewObjectUrl + '"></iframe>');
+                return;
+            }
+            if (ext === "docx") {
+                return blob.arrayBuffer().then(extractDocxText).then(function (text) {
+                    setPreviewBodyHtml('<pre class="file-preview-code"></pre>');
+                    $("filePreviewBody").querySelector("pre").textContent = text;
+                });
+            }
+            return blob.text().then(function (text) {
+                setPreviewBodyHtml('<pre class="file-preview-code"></pre>');
+                $("filePreviewBody").querySelector("pre").textContent = text || "(Empty file)";
+            });
+        }).catch(function (err) {
+            showPreviewNotice(err.message || "Failed to preview this file.");
+        });
+    }
+
+    function toggleReadMore(btn) {
+        var full = btn.getAttribute("data-full") || "";
+        var textEl = btn.previousElementSibling;
+        if (!textEl) return;
+        if (btn.getAttribute("data-expanded") === "1") {
+            textEl.textContent = collapseText(full);
+            btn.textContent = "Read more";
+            btn.setAttribute("data-expanded", "0");
+        } else {
+            textEl.textContent = full;
+            btn.textContent = "Show less";
+            btn.setAttribute("data-expanded", "1");
+        }
+    }
+
     function attachmentHtml(a) {
         var type = a.attachmentType;
-        var isImg = type === "image" || type === 0 || (a.contentType || "").indexOf("image/") === 0;
-        var isAud = type === "audio" || type === 2 || (a.contentType || "").indexOf("audio/") === 0;
-        var isVid = type === "video" || type === 1 || (a.contentType || "").indexOf("video/") === 0;
+        var isImg = isImageAttachment(a);
+        var isAud = type === "audio" || type === 2 || type === "Audio" || (a.contentType || "").indexOf("audio/") === 0;
+        var isVid = type === "video" || type === 1 || type === "Video" || (a.contentType || "").indexOf("video/") === 0;
         var url = a.downloadUrl || (API + "/attachments/download/" + a.id);
         var thumb = a.thumbnailUrl || url;
         if (isImg) {
-            return '<img class="att att-image" src="' + escapeHtml(thumb) + '" data-full="' + escapeHtml(url) + '" alt="" />';
+            return '<img class="att att-image" data-auth-src="' + escapeHtml(thumb) +
+                '" data-full="' + escapeHtml(url) + '" alt="' + escapeHtml(a.fileName || "Image") + '" />';
         }
         if (isAud) {
-            return '<audio class="att att-audio" controls preload="none" src="' + escapeHtml(url) + '"></audio>';
+            return '<audio class="att att-audio" controls preload="none" data-auth-src="' + escapeHtml(url) + '"></audio>';
         }
         if (isVid) {
-            return '<video class="att att-video" controls preload="metadata" src="' + escapeHtml(url) + '"></video>';
+            return '<video class="att att-video" controls preload="metadata" data-auth-src="' + escapeHtml(url) + '"></video>';
         }
-        var ico = type === "archive" ? "🗜️" : (type === "code" ? "💻" : "📄");
-        return '<a class="att att-file" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" download>' +
-            '<span class="file-ico">' + ico + '</span><span class="file-meta">' +
-            '<span class="file-name">' + escapeHtml(a.fileName) + '</span>' +
-            '<span class="file-size">' + escapeHtml(formatSize(a.fileSize)) + '</span></span></a>';
+        var ico = type === "archive" || type === 4 ? "🗜️" : (isCodeFile(a.fileName) || type === "code" || type === 5 ? "💻" : "📄");
+        var html = '<div class="att att-file">' +
+            '<span class="file-ico">' + ico + '</span>' +
+            '<span class="file-meta">' +
+            '<span class="file-name">' + escapeHtml(a.fileName || "File") + '</span>' +
+            '<span class="file-size">' + escapeHtml(formatSize(a.fileSize)) + '</span>' +
+            '</span><span class="file-actions">';
+        if (canPreviewFile(a.fileName, type)) {
+            html += '<button type="button" class="att-btn att-preview-btn"' +
+                ' data-att-url="' + escapeHtml(url) + '"' +
+                ' data-att-name="' + escapeHtml(a.fileName || "File") + '"' +
+                ' data-att-size="' + Number(a.fileSize || 0) + '">Preview</button>';
+        }
+        html += '<button type="button" class="att-btn att-download-btn"' +
+            ' data-att-url="' + escapeHtml(url) + '"' +
+            ' data-att-name="' + escapeHtml(a.fileName || "File") + '">Download</button>';
+        html += '</span></div>';
+        return html;
     }
 
     function messageHasMedia(m) {
@@ -624,8 +931,8 @@
         return atts.some(function (a) {
             var t = a.attachmentType;
             var ct = a.contentType || "";
-            return t === "image" || t === 0 || t === "audio" || t === 2 || t === "video" || t === 1 ||
-                ct.indexOf("image/") === 0 || ct.indexOf("audio/") === 0 || ct.indexOf("video/") === 0 ||
+            return isImageAttachment(a) || t === "audio" || t === 2 || t === "video" || t === 1 ||
+                ct.indexOf("audio/") === 0 || ct.indexOf("video/") === 0 ||
                 !!a.fileName; // any file attachment → delete-only
         });
     }
@@ -670,7 +977,7 @@
             html += '<img class="att att-image" src="' + escapeHtml(content) + '" data-full="' + escapeHtml(content) + '" alt="" />';
         } else if (content) {
             var cls = hasAudio ? "text voice-caption" : "text";
-            html += '<span class="' + cls + '">' + escapeHtml(content) + '</span>';
+            html += renderMessageText(content, cls);
         }
 
         if (m.editedAt) html += '<span class="edited-label">Edited</span>';
@@ -723,6 +1030,7 @@
         bubble.innerHTML = buildBubbleInner(m, chat);
         row.appendChild(bubble);
         $("messages").appendChild(row);
+        hydrateAuthMedia(row);
     }
 
     function updateMessage(m) {
@@ -738,7 +1046,10 @@
         var chat = state.chats.find(function (c) { return c.id === state.activeChatId; });
         row.classList.toggle("deleted", !!m.isDeleted);
         var bubble = row.querySelector(".bubble");
-        if (bubble) bubble.innerHTML = buildBubbleInner(m, chat);
+        if (bubble) {
+            bubble.innerHTML = buildBubbleInner(m, chat);
+            hydrateAuthMedia(bubble);
+        }
         if (m.chatId === state.activeChatId || (prev && prev.chatId === state.activeChatId)) {
             bumpChat(m.chatId || (prev && prev.chatId), m, false);
         }
@@ -1123,9 +1434,46 @@
         }).catch(function (e) { toast(e.message); });
     }
 
+    function isImageFile(file) {
+        if (!file) return false;
+        var type = (file.type || "").toLowerCase();
+        if (type.indexOf("image/") === 0) return true;
+        return !!IMAGE_EXTS[fileExt(file.name)];
+    }
+
+    function fileSizeLimit(file) {
+        return isImageFile(file) ? MAX_IMAGE_BYTES : MAX_FILE_BYTES;
+    }
+
+    function fileTooLargeMessage(file) {
+        var limit = fileSizeLimit(file);
+        var label = isImageFile(file) ? "Images" : "Files";
+        return label + " cannot be larger than " + formatSize(limit) +
+            ". For bigger files, send a link to external storage (Google Drive, OneDrive, etc.).";
+    }
+
+    function discardPlaceholderMessage(msg) {
+        if (!msg || !msg.id) return;
+        wsSend({
+            type: WS.DeleteMessage,
+            messageId: msg.id,
+            payload: { messageId: msg.id }
+        });
+        delete state.seenMessageIds[msg.id];
+        delete state.messagesById[msg.id];
+        var row = document.querySelector('.msg-row[data-msg-id="' + msg.id + '"]');
+        if (row) row.remove();
+    }
+
     // Attachment/voice: create a message then upload the file to it.
     function sendFile(file, caption) {
         if (!state.activeChatId) { toast("Open a chat first"); return; }
+        if (!file) return;
+        if (file.size > fileSizeLimit(file)) {
+            toast(fileTooLargeMessage(file), 7000);
+            return;
+        }
+
         var chatId = state.activeChatId;
         toast("Uploading " + file.name + "…");
         postMessage(caption || " ", chatId).then(function (msg) {
@@ -1138,8 +1486,13 @@
                 updateMessage(msg); scrollToBottom();
                 bumpChat(chatId, msg, false);
                 toast("Sent");
+            }).catch(function (err) {
+                discardPlaceholderMessage(msg);
+                throw err;
             });
-        }).catch(function (e) { toast("Upload failed: " + e.message); });
+        }).catch(function (e) {
+            toast(e.message || "Upload failed", 7000);
+        });
     }
 
     // ---- WebSocket ------------------------------------------------------------
@@ -1722,7 +2075,17 @@
     function hideStrip() { hide($("composeStrip")); }
 
     // ---- Lightbox -------------------------------------------------------------
-    function openLightbox(src) { $("lightboxImg").src = src; show($("lightbox")); }
+    function openLightbox(src) {
+        if (!src) return;
+        show($("lightbox"));
+        $("lightboxImg").removeAttribute("src");
+        loadAuthUrl(src).then(function (objUrl) {
+            $("lightboxImg").src = objUrl;
+        }).catch(function (err) {
+            hide($("lightbox"));
+            toast(err.message || "Failed to open image");
+        });
+    }
 
     // ---- Viewport height fix --------------------------------------------------
     function setAppHeight() { document.documentElement.style.setProperty("--app-height", window.innerHeight + "px"); }
@@ -1902,7 +2265,7 @@
             onVoiceBtnClick();
         });
 
-        // Delegated: message Edit/Delete + image lightbox
+        // Delegated: message Edit/Delete + image lightbox + file preview
         $("messages").addEventListener("click", function (e) {
             var actionBtn = e.target.closest && e.target.closest(".msg-action");
             if (actionBtn) {
@@ -1915,15 +2278,52 @@
                 else if (actionBtn.dataset.action === "delete") deleteOwnMessage(id);
                 return;
             }
+            var previewBtn = e.target.closest && e.target.closest(".att-preview-btn");
+            if (previewBtn) {
+                e.preventDefault();
+                openFilePreview(
+                    previewBtn.getAttribute("data-att-url"),
+                    previewBtn.getAttribute("data-att-name"),
+                    previewBtn.getAttribute("data-att-size")
+                );
+                return;
+            }
+            var downloadBtn = e.target.closest && e.target.closest(".att-download-btn");
+            if (downloadBtn) {
+                e.preventDefault();
+                downloadAttachment(
+                    downloadBtn.getAttribute("data-att-url"),
+                    downloadBtn.getAttribute("data-att-name")
+                );
+                return;
+            }
+            var readMoreBtn = e.target.closest && e.target.closest(".read-more-btn");
+            if (readMoreBtn) {
+                e.preventDefault();
+                toggleReadMore(readMoreBtn);
+                return;
+            }
             var t = e.target;
             if (t && t.classList && t.classList.contains("att-image")) {
                 openLightbox(t.getAttribute("data-full") || t.src);
             }
         });
         $("lightbox").addEventListener("click", function () { hide($("lightbox")); $("lightboxImg").src = ""; });
+        $("closeFilePreview").addEventListener("click", closeFilePreview);
+        $("filePreviewModal").addEventListener("click", function (e) {
+            if (e.target === $("filePreviewModal")) closeFilePreview();
+        });
+        $("filePreviewDownload").addEventListener("click", function () {
+            if (state.previewDownloadUrl) {
+                downloadAttachment(state.previewDownloadUrl, state.previewFileName);
+            }
+        });
 
         document.addEventListener("keydown", function (e) {
             if (e.key === "Escape" && state.editingMessageId) cancelEdit();
+            if (e.key === "Escape" && !$("filePreviewModal").classList.contains("hidden")) {
+                closeFilePreview();
+            }
         });
         $("stripCancel").addEventListener("click", function (e) {
             e.stopPropagation();

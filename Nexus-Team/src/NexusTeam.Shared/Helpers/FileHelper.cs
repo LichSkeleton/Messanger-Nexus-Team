@@ -17,9 +17,20 @@ namespace NexusTeam.Shared.Helpers
         public const long MaxFileSizeBytes = 100 * 1024 * 1024; // 100 MB
 
         /// <summary>
+        /// Maximum HTTP request body for uploads (file limit plus multipart overhead).
+        /// </summary>
+        public const long MaxUploadRequestBodyBytes = MaxFileSizeBytes + (10 * 1024 * 1024); // 110 MB
+
+        /// <summary>
         /// Maximum file size for images: 10 MB.
         /// </summary>
         public const long MaxImageSizeBytes = 10 * 1024 * 1024; // 10 MB
+
+        /// <summary>
+        /// Maximum file size allowed for in-app preview: 5 MB.
+        /// Larger files must be downloaded instead of previewed.
+        /// </summary>
+        public const long MaxPreviewFileSizeBytes = 5 * 1024 * 1024; // 5 MB
 
         private static readonly Dictionary<string, AttachmentType> ExtensionToTypeMap = new Dictionary<string, AttachmentType>(StringComparer.OrdinalIgnoreCase)
         {
@@ -98,6 +109,14 @@ namespace NexusTeam.Shared.Helpers
             { ".ps1", AttachmentType.Code },
         };
 
+        private static readonly HashSet<string> PreviewableDocumentExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".pdf",
+            ".docx",
+            ".txt",
+            ".md",
+        };
+
         /// <summary>
         /// Gets the attachment type based on file extension.
         /// </summary>
@@ -128,6 +147,38 @@ namespace NexusTeam.Shared.Helpers
             }
 
             return fileSize <= MaxFileSizeBytes;
+        }
+
+        /// <summary>
+        /// Checks whether a file type can be previewed in the app before downloading.
+        /// </summary>
+        /// <param name="fileName">The file name.</param>
+        /// <returns>True if the file type supports in-app preview.</returns>
+        public static bool IsPreviewableFile(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return false;
+            }
+
+            if (GetAttachmentType(fileName) == AttachmentType.Code)
+            {
+                return true;
+            }
+
+            var extension = Path.GetExtension(fileName);
+            return PreviewableDocumentExtensions.Contains(extension);
+        }
+
+        /// <summary>
+        /// Checks whether a file is too large to preview in the app.
+        /// Unknown or missing sizes (0 or less) are treated as previewable.
+        /// </summary>
+        /// <param name="fileSize">The file size in bytes.</param>
+        /// <returns>True if the file exceeds the preview size limit.</returns>
+        public static bool IsTooLargeForPreview(long fileSize)
+        {
+            return fileSize > MaxPreviewFileSizeBytes;
         }
 
         /// <summary>

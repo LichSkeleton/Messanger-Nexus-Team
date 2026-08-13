@@ -57,6 +57,8 @@ namespace NexusTeam.Server.Controllers
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The uploaded attachment DTO.</returns>
         [HttpPost("upload")]
+        [RequestSizeLimit(FileHelper.MaxUploadRequestBodyBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = FileHelper.MaxUploadRequestBodyBytes)]
         [ProducesResponseType(typeof(MessageAttachmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
@@ -338,6 +340,8 @@ namespace NexusTeam.Server.Controllers
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The updated attachment DTO.</returns>
         [HttpPut("{attachmentId}")]
+        [RequestSizeLimit(FileHelper.MaxUploadRequestBodyBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = FileHelper.MaxUploadRequestBodyBytes)]
         [ProducesResponseType(typeof(MessageAttachmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]

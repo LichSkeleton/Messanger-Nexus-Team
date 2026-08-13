@@ -58,6 +58,14 @@ namespace NexusTeam.Server
                 builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
                 {
                     options.AddServerHeader = false;
+                    options.Limits.MaxRequestBodySize = NexusTeam.Shared.Helpers.FileHelper.MaxUploadRequestBodyBytes;
+                });
+
+                builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+                {
+                    options.MultipartBodyLengthLimit = NexusTeam.Shared.Helpers.FileHelper.MaxUploadRequestBodyBytes;
+                    options.ValueLengthLimit = int.MaxValue;
+                    options.MultipartHeadersLengthLimit = int.MaxValue;
                 });
 
                 // Configure Serilog logging

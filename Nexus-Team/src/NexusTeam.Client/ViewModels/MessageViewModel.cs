@@ -7,9 +7,11 @@ namespace NexusTeam.Client.ViewModels
     using System.Threading.Tasks;
     using System.Windows.Media.Imaging;
     using CommunityToolkit.Mvvm.ComponentModel;
+    using CommunityToolkit.Mvvm.Input;
     using NexusTeam.Client.Services;
     using NexusTeam.Shared.Dtos;
     using NexusTeam.Shared.Enums;
+    using NexusTeam.Shared.Helpers;
 
     /// <summary>
     /// View model for a single message.
@@ -35,6 +37,7 @@ namespace NexusTeam.Client.ViewModels
         private string? senderName;
         private string? senderAvatarUrl;
         private bool isGroupChat;
+        private bool isContentExpanded;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MessageViewModel"/> class.
@@ -185,6 +188,7 @@ namespace NexusTeam.Client.ViewModels
                 if (this.SetProperty(ref this.content, value))
                 {
                     this.OnPropertyChanged(nameof(this.HasContent));
+                    this.NotifyContentDisplayProperties();
                 }
             }
         }
@@ -270,6 +274,45 @@ namespace NexusTeam.Client.ViewModels
         /// Gets a value indicating whether this message has visible content (not just whitespace).
         /// </summary>
         public bool HasContent => !string.IsNullOrWhiteSpace(this.content);
+
+        /// <summary>
+        /// Gets a value indicating whether the message is long enough to show Read more.
+        /// </summary>
+        public bool NeedsReadMore => MessageContentHelper.NeedsTruncation(this.content);
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the full long message is expanded.
+        /// </summary>
+        public bool IsContentExpanded
+        {
+            get => this.isContentExpanded;
+            set
+            {
+                if (this.SetProperty(ref this.isContentExpanded, value))
+                {
+                    this.NotifyContentDisplayProperties();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the message text shown in the bubble, truncated until expanded.
+        /// </summary>
+        public string DisplayContent => MessageContentHelper.GetDisplayContent(this.content, this.isContentExpanded);
+
+        /// <summary>
+        /// Gets the label for the Read more / Show less control.
+        /// </summary>
+        public string ReadMoreButtonText => this.isContentExpanded ? "Show less" : "Read more";
+
+        /// <summary>
+        /// Toggles whether a long message is fully visible.
+        /// </summary>
+        [RelayCommand]
+        private void ToggleContentExpansion()
+        {
+            this.IsContentExpanded = !this.IsContentExpanded;
+        }
 
         /// <summary>
         /// Gets the reactions dictionary.
@@ -439,6 +482,13 @@ namespace NexusTeam.Client.ViewModels
                 // Silently fail and use default avatar
                 this.SenderAvatarImage = this.avatarService.GetDefaultAvatar();
             }
+        }
+
+        private void NotifyContentDisplayProperties()
+        {
+            this.OnPropertyChanged(nameof(this.DisplayContent));
+            this.OnPropertyChanged(nameof(this.NeedsReadMore));
+            this.OnPropertyChanged(nameof(this.ReadMoreButtonText));
         }
     }
 }
