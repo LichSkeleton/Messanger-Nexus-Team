@@ -107,7 +107,7 @@ curl -fsS "http://localhost:${server_port}/health" | grep -q Healthy
 
 login_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"usernameOrEmail":"no-such-user","password":"x"}' \
+  -d '{"usernameOrEmail":"no-such-user","password":"x","deviceId":"00000000-0000-4000-8000-000000000001","deviceName":"Docker smoke test"}' \
   "http://localhost:${web_port}/api/auth/login")"
 
 if [[ "$login_status" != "401" ]]; then

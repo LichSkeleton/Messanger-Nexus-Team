@@ -42,6 +42,32 @@ namespace NexusTeam.Server.Tests.Services
         }
 
         [Fact]
+        public async Task GenerateAccessTokenAsync_WithDeviceId_IncludesDeviceClaim()
+        {
+            using var logger = new LoggerConfiguration().CreateLogger();
+            var service = CreateService(DateTime.UtcNow, logger: logger);
+
+            var tokenString = await service.GenerateAccessTokenAsync(CreateUser(), "device-123");
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(tokenString);
+
+            Assert.Contains(token.Claims, claim => claim.Type == "device_id" && claim.Value == "device-123");
+        }
+
+        [Fact]
+        public async Task ValidateIdentityAsync_WithDeviceToken_ReturnsUserAndDeviceIds()
+        {
+            using var logger = new LoggerConfiguration().CreateLogger();
+            var service = CreateService(DateTime.UtcNow, logger: logger);
+            var token = await service.GenerateAccessTokenAsync(CreateUser(), "device-123");
+
+            var identity = await service.ValidateIdentityAsync(token);
+
+            Assert.NotNull(identity);
+            Assert.Equal("user-123", identity.UserId);
+            Assert.Equal("device-123", identity.DeviceId);
+        }
+
+        [Fact]
         public async Task GenerateAccessTokenAsync_ForSameUser_CreatesUniqueTokens()
         {
             var now = DateTime.UtcNow;

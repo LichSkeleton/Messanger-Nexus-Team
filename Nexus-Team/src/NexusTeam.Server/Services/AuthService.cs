@@ -27,6 +27,7 @@ namespace NexusTeam.Server.Services
         private readonly ILogger logger;
         private readonly IUserStatusService userStatusService;
         private readonly IAvatarService avatarService;
+        private readonly IUserDeviceService? userDeviceService;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthService"/> class.
@@ -40,6 +41,7 @@ namespace NexusTeam.Server.Services
         /// <param name="logger">Logger instance.</param>
         /// <param name="userStatusService">User status service.</param>
         /// <param name="avatarService">Avatar service.</param>
+        /// <param name="userDeviceService">User device registration service.</param>
         public AuthService(
             IUserRepository userRepository,
             IPasswordHasher passwordHasher,
@@ -49,7 +51,8 @@ namespace NexusTeam.Server.Services
             IClock clock,
             ILogger logger,
             IUserStatusService userStatusService,
-            IAvatarService avatarService)
+            IAvatarService avatarService,
+            IUserDeviceService? userDeviceService = null)
         {
             this.userRepository = userRepository;
             this.passwordHasher = passwordHasher;
@@ -60,6 +63,7 @@ namespace NexusTeam.Server.Services
             this.logger = logger;
             this.userStatusService = userStatusService;
             this.avatarService = avatarService;
+            this.userDeviceService = userDeviceService;
         }
 
         /// <inheritdoc/>
@@ -167,8 +171,13 @@ namespace NexusTeam.Server.Services
                     throw new AuthenticationException("Invalid username/email or password");
                 }
 
-                var accessToken = await this.jwtTokenService.GenerateAccessTokenAsync(user);
-                var refreshToken = await this.refreshTokenService.GenerateRefreshTokenAsync(user.Id, cancellationToken);
+                if (this.userDeviceService != null)
+                {
+                    await this.userDeviceService.RegisterLoginAsync(user.Id, request.DeviceId, request.DeviceName, cancellationToken);
+                }
+
+                var accessToken = await this.jwtTokenService.GenerateAccessTokenAsync(user, request.DeviceId);
+                var refreshToken = await this.refreshTokenService.GenerateRefreshTokenAsync(user.Id, request.DeviceId, cancellationToken);
 
                 this.logger.Information("User logged in successfully: {UserId} - {Username}", user.Id, user.Username);
 
