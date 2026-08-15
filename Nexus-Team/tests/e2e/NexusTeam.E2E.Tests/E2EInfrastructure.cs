@@ -69,10 +69,17 @@ namespace NexusTeam.E2E.Tests
             Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
             using var registerJson = await ReadJsonAsync(registration);
             var id = registerJson.RootElement.GetProperty("user").GetProperty("id").GetString()!;
-            using var login = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = username, password });
+            var deviceId = Guid.NewGuid().ToString();
+            using var login = await client.PostAsJsonAsync("/api/auth/login", new
+            {
+                usernameOrEmail = username,
+                password,
+                deviceId,
+                deviceName = "E2E Browser",
+            });
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
             using var loginJson = await ReadJsonAsync(login);
-            return new TestUser(id, username, email, password, loginJson.RootElement.GetProperty("accessToken").GetString()!);
+            return new TestUser(id, username, email, password, loginJson.RootElement.GetProperty("accessToken").GetString()!, deviceId);
         }
 
         public async Task<string> CreateChatAsync(TestUser owner, params TestUser[] participants)
@@ -126,7 +133,7 @@ namespace NexusTeam.E2E.Tests
         private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    public sealed record TestUser(string Id, string Username, string Email, string Password, string Token);
+    public sealed record TestUser(string Id, string Username, string Email, string Password, string Token, string DeviceId);
 
     public sealed class E2ESocket : IAsyncDisposable
     {

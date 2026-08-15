@@ -440,12 +440,22 @@ namespace NexusTeam.Server.Middleware
                 }
 
                 this.logger.Information("Validating JWT token, length: {Length}", authPayload.Token.Length);
-                var userId = await this.jwtTokenService.ValidateTokenAsync(authPayload.Token);
+                var identity = await this.jwtTokenService.ValidateIdentityAsync(authPayload.Token);
+                var userId = identity?.UserId;
 
-                if (string.IsNullOrEmpty(userId))
+                if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(identity?.DeviceId))
                 {
-                    this.logger.Warning("Authentication failed: Token validation returned null or empty userId");
+                    this.logger.Warning("Authentication failed: Token is not bound to a user device");
                     await this.SendErrorAsync(webSocket, "Authentication failed");
+                    return null;
+                }
+
+                var deviceService = httpContext.RequestServices.GetRequiredService<IUserDeviceService>();
+                var accessState = await deviceService.GetAccessStateAsync(userId, identity.DeviceId, CancellationToken.None);
+                if (accessState != DeviceAccessState.Allowed)
+                {
+                    this.logger.Warning("WebSocket authentication rejected for device {DeviceId}: {AccessState}", identity.DeviceId, accessState);
+                    await this.SendErrorAsync(webSocket, accessState == DeviceAccessState.Locked ? "DEVICE_LOCKED" : "DEVICE_SESSION_INVALID");
                     return null;
                 }
 

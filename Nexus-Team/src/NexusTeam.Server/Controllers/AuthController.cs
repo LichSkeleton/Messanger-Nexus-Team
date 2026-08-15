@@ -1,8 +1,10 @@
 namespace NexusTeam.Server.Controllers
 {
+    using System;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Mvc;
+    using NexusTeam.Server.Data.Repositories;
     using NexusTeam.Server.Models;
     using NexusTeam.Server.Services.Abstractions;
     using NexusTeam.Shared.Dtos;
@@ -20,6 +22,8 @@ namespace NexusTeam.Server.Controllers
         private readonly IRateLimitService rateLimitService;
         private readonly ISessionService sessionService;
         private readonly ILogger logger;
+        private readonly IRefreshTokenService? refreshTokenService;
+        private readonly IUserDeviceService? userDeviceService;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthController"/> class.
@@ -28,12 +32,22 @@ namespace NexusTeam.Server.Controllers
         /// <param name="rateLimitService">Rate limit service.</param>
         /// <param name="sessionService">Session service.</param>
         /// <param name="logger">Logger instance.</param>
-        public AuthController(IAuthService authService, IRateLimitService rateLimitService, ISessionService sessionService, ILogger logger)
+        /// <param name="refreshTokenService">Device-bound refresh-token service.</param>
+        /// <param name="userDeviceService">Per-device session service.</param>
+        public AuthController(
+            IAuthService authService,
+            IRateLimitService rateLimitService,
+            ISessionService sessionService,
+            ILogger logger,
+            IRefreshTokenService? refreshTokenService = null,
+            IUserDeviceService? userDeviceService = null)
         {
             this.authService = authService;
             this.rateLimitService = rateLimitService;
             this.sessionService = sessionService;
             this.logger = logger;
+            this.refreshTokenService = refreshTokenService;
+            this.userDeviceService = userDeviceService;
         }
 
         /// <summary>
@@ -97,6 +111,12 @@ namespace NexusTeam.Server.Controllers
             try
             {
                 var response = await this.authService.LoginAsync(request, cancellationToken);
+                if (!string.IsNullOrEmpty(response.RefreshToken))
+                {
+                    this.Response.Cookies.Append("nexus_refresh", response.RefreshToken, RefreshCookieOptions());
+                    response.RefreshToken = null;
+                }
+
                 this.logger.Information("User login successful via API");
                 return this.Ok(response);
             }
@@ -105,6 +125,56 @@ namespace NexusTeam.Server.Controllers
                 this.logger.Warning(ex, "Authentication failed");
                 return this.Unauthorized(new ErrorResponse { Error = ex.Message });
             }
+        }
+
+        /// <summary>Rotates a device refresh token and returns a new access token.</summary>
+        /// <param name="refreshTokens">Refresh-token service.</param>
+        /// <param name="jwtTokens">JWT service.</param>
+        /// <param name="users">User repository.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A refreshed login response.</returns>
+        [HttpPost("refresh")]
+        public async Task<ActionResult<LoginResponse>> Refresh(
+            [FromServices] IRefreshTokenService refreshTokens,
+            [FromServices] IJwtTokenService jwtTokens,
+            [FromServices] IUserRepository users,
+            CancellationToken cancellationToken)
+        {
+            if (!this.Request.Cookies.TryGetValue("nexus_refresh", out var token))
+            {
+                return this.Unauthorized();
+            }
+
+            var identity = await refreshTokens.ValidateRefreshTokenIdentityAsync(token, cancellationToken);
+            if (identity == null)
+            {
+                return this.Unauthorized();
+            }
+
+            var user = await users.GetByIdAsync(identity.UserId, cancellationToken);
+            if (user == null)
+            {
+                return this.Unauthorized();
+            }
+
+            await refreshTokens.RevokeRefreshTokenAsync(token, cancellationToken);
+            var rotated = await refreshTokens.GenerateRefreshTokenAsync(identity.UserId, identity.DeviceId, cancellationToken);
+            this.Response.Cookies.Append("nexus_refresh", rotated, RefreshCookieOptions());
+            return this.Ok(new LoginResponse
+            {
+                AccessToken = await jwtTokens.GenerateAccessTokenAsync(user, identity.DeviceId),
+                ExpiresIn = 3600,
+                User = new UserDto
+                {
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    DisplayName = user.DisplayName,
+                    AvatarUrl = user.AvatarUrl,
+                    Status = user.Status,
+                    LastSeenAt = user.LastSeenAt,
+                },
+            });
         }
 
         /// <summary>
@@ -126,8 +196,28 @@ namespace NexusTeam.Server.Controllers
 
             try
             {
-                // Remove user session from Redis
-                await this.sessionService.RemoveSessionAsync(userId, cancellationToken);
+                if (this.Request.Cookies.TryGetValue("nexus_refresh", out var refreshToken))
+                {
+                    if (this.refreshTokenService != null)
+                    {
+                        await this.refreshTokenService.RevokeRefreshTokenAsync(refreshToken, cancellationToken);
+                    }
+
+                    this.Response.Cookies.Delete("nexus_refresh", new Microsoft.AspNetCore.Http.CookieOptions { Path = "/api/auth" });
+                }
+                else
+                {
+                    // Compatibility for older sessions which pre-date device-bound refresh tokens.
+                    await this.sessionService.RemoveSessionAsync(userId, cancellationToken);
+                }
+
+                if (this.HttpContext.Items["DeviceId"] is string deviceId &&
+                    !string.IsNullOrWhiteSpace(deviceId) &&
+                    this.userDeviceService != null)
+                {
+                    await this.userDeviceService.RevokeSessionAsync(userId, deviceId, cancellationToken);
+                }
+
                 this.logger.Information("User {UserId} logged out successfully", userId);
                 return this.Ok(new { message = "Logged out successfully" });
             }
@@ -139,5 +229,14 @@ namespace NexusTeam.Server.Controllers
                 return this.Ok(new { message = "Logged out successfully" });
             }
         }
+
+        private static Microsoft.AspNetCore.Http.CookieOptions RefreshCookieOptions() => new Microsoft.AspNetCore.Http.CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
+            Secure = false,
+            Path = "/api/auth",
+            Expires = DateTimeOffset.UtcNow.AddDays(7),
+        };
     }
 }

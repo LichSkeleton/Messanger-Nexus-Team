@@ -47,7 +47,8 @@ namespace NexusTeam.Server.Middleware
 
                 try
                 {
-                    var userId = await jwtTokenService.ValidateTokenAsync(token);
+                    var identity = await jwtTokenService.ValidateIdentityAsync(token);
+                    var userId = identity?.UserId;
 
                     if (!string.IsNullOrEmpty(userId))
                     {
@@ -56,6 +57,7 @@ namespace NexusTeam.Server.Middleware
                         if (user != null)
                         {
                             context.Items[UserIdKey] = userId;
+                            context.Items["DeviceId"] = identity?.DeviceId;
                             context.Items["User"] = user;
                             this.logger.Debug("JWT authentication successful for user {UserId}", userId);
                         }

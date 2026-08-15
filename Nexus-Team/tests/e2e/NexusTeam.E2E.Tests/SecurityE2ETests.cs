@@ -86,7 +86,7 @@ namespace NexusTeam.E2E.Tests
             var identifier = "missing_" + Guid.NewGuid().ToString("N");
             using var client = this.fixture.Client();
             HttpStatusCode last = HttpStatusCode.OK;
-            for (var i = 0; i < 6; i++) { using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = identifier, password = "WrongPass123" }); last = response.StatusCode; }
+            for (var i = 0; i < 6; i++) { using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = identifier, password = "WrongPass123", deviceId = Guid.NewGuid(), deviceName = "E2E Browser" }); last = response.StatusCode; }
             Assert.Equal((HttpStatusCode)429, last);
         }
 

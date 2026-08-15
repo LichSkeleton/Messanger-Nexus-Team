@@ -60,7 +60,7 @@ namespace NexusTeam.E2E.Tests
         {
             var user = await this.fixture.RegisterAndLoginAsync("auth06");
             using var client = this.fixture.Client();
-            using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = user.Username, password = user.Password });
+            using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = user.Username, password = user.Password, deviceId = Guid.NewGuid(), deviceName = "E2E Browser" });
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             using var json = await E2EFixture.ReadJsonAsync(response);
             Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("accessToken").GetString()));
@@ -71,7 +71,7 @@ namespace NexusTeam.E2E.Tests
         {
             var user = await this.fixture.RegisterAndLoginAsync("auth07");
             using var client = this.fixture.Client();
-            using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = user.Email, password = user.Password });
+            using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = user.Email, password = user.Password, deviceId = Guid.NewGuid(), deviceName = "E2E Browser" });
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
@@ -80,7 +80,7 @@ namespace NexusTeam.E2E.Tests
         {
             var user = await this.fixture.RegisterAndLoginAsync("auth08");
             using var client = this.fixture.Client();
-            using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = user.Username, password = "WrongPass123" });
+            using var response = await client.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = user.Username, password = "WrongPass123", deviceId = Guid.NewGuid(), deviceName = "E2E Browser" });
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
 

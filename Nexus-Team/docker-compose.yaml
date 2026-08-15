@@ -157,6 +157,7 @@ services:
       MongoDB__DatabaseName: "NexusTeamE2E"
       Redis__ConnectionString: "redis-e2e:6379,abortConnect=false,allowAdmin=true"
       Jwt__SecretKey: "${JWT_SECRET:-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6}"
+      DeviceLock__PinPepper: "${DEVICE_LOCK_PIN_PEPPER:-e2e-device-lock-pepper-change-me-1234567890}"
       Cors__AllowedOrigins__0: "http://e2e.invalid"
       ASPNETCORE_ENVIRONMENT: "Production"
     healthcheck:
@@ -454,6 +455,7 @@ services:
       MongoDB__DatabaseName: "${MONGO_DATABASE:-NexusTeam}"
       Redis__ConnectionString: "redis:6379,abortConnect=false,allowAdmin=true"
       Jwt__SecretKey: "${JWT_SECRET:-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6}"
+      DeviceLock__PinPepper: "${DEVICE_LOCK_PIN_PEPPER:-local-device-lock-pepper-change-me-1234567890}"
       # The browser talks to the API through the Nginx reverse proxy on the
       # same origin, so this only matters for clients hitting 5251 directly.
       Cors__AllowedOrigins__0: "http://localhost:${WEB_PORT:-8080}"

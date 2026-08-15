@@ -16,5 +16,11 @@ namespace NexusTeam.Shared.Dtos
         /// Should be transmitted over secure connection only.
         /// </summary>
         public string Password { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets the stable browser device identifier.</summary>
+        public string DeviceId { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets a human-readable browser/device label.</summary>
+        public string DeviceName { get; set; } = string.Empty;
     }
 }
