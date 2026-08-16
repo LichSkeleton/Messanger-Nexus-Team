@@ -91,7 +91,7 @@ namespace NexusTeam.E2E.Tests
         {
             var owner = await this.fixture.RegisterAndLoginAsync("folder01_owner"); var member = await this.fixture.RegisterAndLoginAsync("folder01_member"); var chatId = await this.fixture.CreateChatAsync(owner, member); using var client = this.fixture.Client(owner.Token);
             using var create = await client.PostAsJsonAsync("/api/folders", new { name = "Important", chatIds = new[] { chatId } }); Assert.Equal(HttpStatusCode.Created, create.StatusCode); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
-            using var update = await client.PutAsJsonAsync($"/api/folders/{folderId}", new { name = "Renamed", chatIds = Array.Empty<string>() }); Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+            using var update = await client.PutAsJsonAsync($"/api/folders/{folderId}", new { name = "Renamed", chatIds = new[] { chatId } }); Assert.Equal(HttpStatusCode.OK, update.StatusCode);
             using var delete = await client.DeleteAsync($"/api/folders/{folderId}"); Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
             using var get = await client.GetAsync($"/api/folders/{folderId}"); Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
         }
@@ -100,32 +100,32 @@ namespace NexusTeam.E2E.Tests
         [Trait("Category", "Regression")]
         public async Task Folder02_OwnershipIsolation()
         {
-            var owner = await this.fixture.RegisterAndLoginAsync("folder02_owner"); var outsider = await this.fixture.RegisterAndLoginAsync("folder02_out"); using var ownerClient = this.fixture.Client(owner.Token);
-            using var create = await ownerClient.PostAsJsonAsync("/api/folders", new { name = "Private", chatIds = Array.Empty<string>() }); using var json = await E2EFixture.ReadJsonAsync(create); var folderId = json.RootElement.GetProperty("id").GetString();
+            var owner = await this.fixture.RegisterAndLoginAsync("folder02_owner"); var member = await this.fixture.RegisterAndLoginAsync("folder02_member"); var outsider = await this.fixture.RegisterAndLoginAsync("folder02_out"); var chatId = await this.fixture.CreateChatAsync(owner, member); using var ownerClient = this.fixture.Client(owner.Token);
+            using var create = await ownerClient.PostAsJsonAsync("/api/folders", new { name = "Private", chatIds = new[] { chatId } }); using var json = await E2EFixture.ReadJsonAsync(create); var folderId = json.RootElement.GetProperty("id").GetString();
             using var outsiderClient = this.fixture.Client(outsider.Token); using var get = await outsiderClient.GetAsync($"/api/folders/{folderId}"); Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
         }
 
         [Fact(DisplayName = "FOLDER-03 Folder list includes the authenticated user's folder")]
         public async Task Folder03_ListIncludesCreated()
         {
-            var user = await this.fixture.RegisterAndLoginAsync("folder03"); using var client = this.fixture.Client(user.Token);
-            using var create = await client.PostAsJsonAsync("/api/folders", new { name = "Listed", chatIds = Array.Empty<string>() }); Assert.Equal(HttpStatusCode.Created, create.StatusCode); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
+            var user = await this.fixture.RegisterAndLoginAsync("folder03"); var member = await this.fixture.RegisterAndLoginAsync("folder03_member"); var chatId = await this.fixture.CreateChatAsync(user, member); using var client = this.fixture.Client(user.Token);
+            using var create = await client.PostAsJsonAsync("/api/folders", new { name = "Listed", chatIds = new[] { chatId } }); Assert.Equal(HttpStatusCode.Created, create.StatusCode); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
             using var list = await client.GetAsync("/api/folders"); Assert.Equal(HttpStatusCode.OK, list.StatusCode); using var json = await E2EFixture.ReadJsonAsync(list); Assert.Contains(json.RootElement.EnumerateArray(), x => x.GetProperty("id").GetString() == folderId);
         }
 
         [Fact(DisplayName = "FOLDER-04 User cannot update another user's folder")]
         public async Task Folder04_UpdateOwnershipIsolation()
         {
-            var owner = await this.fixture.RegisterAndLoginAsync("folder04_owner"); var outsider = await this.fixture.RegisterAndLoginAsync("folder04_out"); using var ownerClient = this.fixture.Client(owner.Token);
-            using var create = await ownerClient.PostAsJsonAsync("/api/folders", new { name = "Private", chatIds = Array.Empty<string>() }); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
-            using var outsiderClient = this.fixture.Client(outsider.Token); using var update = await outsiderClient.PutAsJsonAsync($"/api/folders/{folderId}", new { name = "Stolen", chatIds = Array.Empty<string>() }); Assert.True(update.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized);
+            var owner = await this.fixture.RegisterAndLoginAsync("folder04_owner"); var member = await this.fixture.RegisterAndLoginAsync("folder04_member"); var outsider = await this.fixture.RegisterAndLoginAsync("folder04_out"); var chatId = await this.fixture.CreateChatAsync(owner, member); using var ownerClient = this.fixture.Client(owner.Token);
+            using var create = await ownerClient.PostAsJsonAsync("/api/folders", new { name = "Private", chatIds = new[] { chatId } }); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
+            using var outsiderClient = this.fixture.Client(outsider.Token); using var update = await outsiderClient.PutAsJsonAsync($"/api/folders/{folderId}", new { name = "Stolen", chatIds = new[] { chatId } }); Assert.True(update.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized);
         }
 
         [Fact(DisplayName = "FOLDER-05 User cannot delete another user's folder")]
         public async Task Folder05_DeleteOwnershipIsolation()
         {
-            var owner = await this.fixture.RegisterAndLoginAsync("folder05_owner"); var outsider = await this.fixture.RegisterAndLoginAsync("folder05_out"); using var ownerClient = this.fixture.Client(owner.Token);
-            using var create = await ownerClient.PostAsJsonAsync("/api/folders", new { name = "Private", chatIds = Array.Empty<string>() }); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
+            var owner = await this.fixture.RegisterAndLoginAsync("folder05_owner"); var member = await this.fixture.RegisterAndLoginAsync("folder05_member"); var outsider = await this.fixture.RegisterAndLoginAsync("folder05_out"); var chatId = await this.fixture.CreateChatAsync(owner, member); using var ownerClient = this.fixture.Client(owner.Token);
+            using var create = await ownerClient.PostAsJsonAsync("/api/folders", new { name = "Private", chatIds = new[] { chatId } }); using var created = await E2EFixture.ReadJsonAsync(create); var folderId = created.RootElement.GetProperty("id").GetString();
             using var outsiderClient = this.fixture.Client(outsider.Token); using var delete = await outsiderClient.DeleteAsync($"/api/folders/{folderId}"); Assert.True(delete.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized);
             using var verify = await ownerClient.GetAsync($"/api/folders/{folderId}"); Assert.Equal(HttpStatusCode.OK, verify.StatusCode);
         }

@@ -61,7 +61,7 @@ namespace NexusTeam.Server.Tests.Validators
             {
                 ChatId = "chat-1",
                 Content = "Hello",
-                ReplyToId = new string('a', 27),
+                ReplyToId = new string('a', 51),
             };
 
             var result = this.validator.TestValidate(request);

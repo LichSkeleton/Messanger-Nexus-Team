@@ -36,6 +36,7 @@ namespace NexusTeam.Server.Tests.Controllers
         {
             public (string, string)? SearchCall { get; private set; }
             public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task<string> DeleteMessageAsync(string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
             public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default) => throw new NotSupportedException();

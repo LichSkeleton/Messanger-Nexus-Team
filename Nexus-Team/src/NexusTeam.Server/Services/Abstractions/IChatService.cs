@@ -51,8 +51,36 @@ namespace NexusTeam.Server.Services.Abstractions
         /// <param name="chatId">The chat ID.</param>
         /// <param name="userId">The user ID leaving the chat.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        Task LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default);
+        /// <returns>Membership change details including a system message for remaining members.</returns>
+        Task<ChatMembershipChangeResult> LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Adds users to a group chat. Only the owner can add members.
+        /// </summary>
+        /// <param name="chatId">The chat ID.</param>
+        /// <param name="ownerUserId">The user ID of the requester (must be owner).</param>
+        /// <param name="userIds">User IDs to add.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Membership change details including system messages.</returns>
+        Task<ChatMembershipChangeResult> AddParticipantsAsync(
+            string chatId,
+            string ownerUserId,
+            IReadOnlyList<string> userIds,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Removes a user from a group chat. Only the owner can remove members.
+        /// </summary>
+        /// <param name="chatId">The chat ID.</param>
+        /// <param name="ownerUserId">The user ID of the requester (must be owner).</param>
+        /// <param name="targetUserId">The user ID to remove.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Membership change details including a system message.</returns>
+        Task<ChatMembershipChangeResult> RemoveParticipantAsync(
+            string chatId,
+            string ownerUserId,
+            string targetUserId,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Updates group chat properties. Only the owner (creator) can update.
@@ -78,6 +106,20 @@ namespace NexusTeam.Server.Services.Abstractions
             string userId,
             string fileName,
             System.IO.Stream fileStream,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Pins or unpins a chat for the current user. Pin state is personal.
+        /// </summary>
+        /// <param name="chatId">The chat ID.</param>
+        /// <param name="userId">The user ID requesting the change.</param>
+        /// <param name="pinned">Whether the chat should be pinned.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat DTO.</returns>
+        Task<ChatDto> SetChatPinnedAsync(
+            string chatId,
+            string userId,
+            bool pinned,
             CancellationToken cancellationToken = default);
     }
 }

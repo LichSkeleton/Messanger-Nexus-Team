@@ -28,6 +28,7 @@ namespace NexusTeam.Shared.Serialization
     [JsonSerializable(typeof(AuthenticateResponse))]
     [JsonSerializable(typeof(RegisterResponse))]
     [JsonSerializable(typeof(SendMessageRequest))]
+    [JsonSerializable(typeof(ForwardMessageRequest))]
     [JsonSerializable(typeof(EditMessageRequest))]
     [JsonSerializable(typeof(DeleteMessageRequest))]
     [JsonSerializable(typeof(DeleteMessageNotification))]

@@ -60,6 +60,18 @@ namespace NexusTeam.Server.Tests.Controllers
         }
 
         [Fact]
+        public async Task ForwardMessage_RequiresUserAndReturnsCreated()
+        {
+            Assert.IsType<UnauthorizedResult>((await new Fixture().Controller.ForwardMessage("saved-1", new ForwardMessageRequest { MessageId = "m1" }, default)).Result);
+            var fixture = new Fixture("user-1");
+            Assert.IsType<BadRequestObjectResult>((await fixture.Controller.ForwardMessage("saved-1", new ForwardMessageRequest(), default)).Result);
+            Assert.IsType<CreatedResult>((await fixture.Controller.ForwardMessage("saved-1", new ForwardMessageRequest { MessageId = "m1" }, default)).Result);
+            Assert.Equal("user-1", fixture.Messages.UserId);
+            Assert.Equal("m1", fixture.Messages.ForwardedMessageId);
+            Assert.Equal("saved-1", fixture.Messages.ForwardTargetChatId);
+        }
+
+        [Fact]
         public async Task CreateChat_ValidatesRequestAuthenticationAndModel()
         {
             Assert.IsType<BadRequestObjectResult>((await new Fixture().Controller.CreateChat(null, default)).Result);
@@ -160,14 +172,31 @@ namespace NexusTeam.Server.Tests.Controllers
             public ChatDto? Result { get; set; } public Exception? Error { get; set; }
             private Task<T> Return<T>(T value) => this.Error == null ? Task.FromResult(value) : Task.FromException<T>(this.Error);
             private Task Return() => this.Error == null ? Task.CompletedTask : Task.FromException(this.Error);
-            public Task<IEnumerable<ChatDto>> GetUserChatsAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ChatDto>>(Array.Empty<ChatDto>()); public Task<ChatDto?> GetChatByIdAsync(string chatId, string userId, CancellationToken cancellationToken = default) => Task.FromResult(this.Result); public Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default) => this.Return(this.Result ?? new ChatDto()); public Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => this.Return(); public Task LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => this.Return(); public Task<ChatDto> UpdateChatAsync(string chatId, string userId, UpdateChatRequest request, CancellationToken cancellationToken = default) => this.Return(this.Result ?? new ChatDto()); public Task<ChatDto> UploadChatAvatarAsync(string chatId, string userId, string fileName, Stream fileStream, CancellationToken cancellationToken = default) => this.Return(this.Result ?? new ChatDto());
+            public Task<IEnumerable<ChatDto>> GetUserChatsAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ChatDto>>(Array.Empty<ChatDto>());
+            public Task<ChatDto?> GetChatByIdAsync(string chatId, string userId, CancellationToken cancellationToken = default) => Task.FromResult(this.Result);
+            public Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default) => this.Return(this.Result ?? new ChatDto());
+            public Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => this.Return();
+            public Task<ChatMembershipChangeResult> LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => this.Return(new ChatMembershipChangeResult());
+            public Task<ChatMembershipChangeResult> AddParticipantsAsync(string chatId, string ownerUserId, IReadOnlyList<string> userIds, CancellationToken cancellationToken = default) => this.Return(new ChatMembershipChangeResult { Chat = this.Result ?? new ChatDto() });
+            public Task<ChatMembershipChangeResult> RemoveParticipantAsync(string chatId, string ownerUserId, string targetUserId, CancellationToken cancellationToken = default) => this.Return(new ChatMembershipChangeResult { Chat = this.Result ?? new ChatDto() });
+            public Task<ChatDto> UpdateChatAsync(string chatId, string userId, UpdateChatRequest request, CancellationToken cancellationToken = default) => this.Return(this.Result ?? new ChatDto());
+            public Task<ChatDto> UploadChatAvatarAsync(string chatId, string userId, string fileName, Stream fileStream, CancellationToken cancellationToken = default) => this.Return(this.Result ?? new ChatDto());
+            public Task<ChatDto> SetChatPinnedAsync(string chatId, string userId, bool pinned, CancellationToken cancellationToken = default)
+            {
+                if (this.Result != null)
+                {
+                    this.Result.IsPinned = pinned;
+                }
+
+                return this.Return(this.Result ?? new ChatDto { IsPinned = pinned });
+            }
         }
 
         private sealed class Messages : IMessageService
         {
-            public (int, int)? Page { get; private set; } public string? UserId { get; private set; } public string? Emoji { get; private set; } public ValidationException? Error { get; set; }
+            public (int, int)? Page { get; private set; } public string? UserId { get; private set; } public string? Emoji { get; private set; } public string? ForwardedMessageId { get; private set; } public string? ForwardTargetChatId { get; private set; } public ValidationException? Error { get; set; }
             private Task<MessageDto> Result() => this.Error == null ? Task.FromResult(new MessageDto { Id = "m1" }) : Task.FromException<MessageDto>(this.Error);
-            public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) { this.UserId = senderId; return this.Result(); } public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default) { this.Page = (limit, offset); this.UserId = userId; return Task.FromResult<IEnumerable<MessageDto>>(Array.Empty<MessageDto>()); } public Task<MessageDto> AddReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); } public Task<MessageDto> RemoveReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); }
+            public Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default) { this.UserId = senderId; return this.Result(); } public Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, string userId, CancellationToken cancellationToken = default) { this.UserId = userId; this.ForwardedMessageId = messageId; this.ForwardTargetChatId = targetChatId; return this.Result(); } public Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default) { this.Page = (limit, offset); this.UserId = userId; return Task.FromResult<IEnumerable<MessageDto>>(Array.Empty<MessageDto>()); } public Task<MessageDto> AddReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); } public Task<MessageDto> RemoveReactionAsync(string messageId, string emoji, string userId, CancellationToken cancellationToken = default) { this.Emoji = emoji; return this.Result(); }
             public Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<string> DeleteMessageAsync(string messageId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task MarkAsDeliveredAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task MarkAsReadAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<IEnumerable<MessageDto>> SearchMessagesAsync(string chatId, string query, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<MessageDto?> GetMessageByIdAsync(string messageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         }
 

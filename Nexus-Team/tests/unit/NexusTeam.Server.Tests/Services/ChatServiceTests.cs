@@ -51,7 +51,10 @@ namespace NexusTeam.Server.Tests.Services
 
             var result = (await fixture.Service.GetUserChatsAsync("user-1")).ToList();
 
-            Assert.Equal("fallback", Assert.Single(result).Name);
+            Assert.Equal("fallback", result.Single(x => x.Type == ChatType.DirectMessage).Name);
+            var saved = Assert.Single(result, x => x.Type == ChatType.SavedMessages);
+            Assert.Equal("Saved Messages", saved.Name);
+            Assert.Equal(ChatType.SavedMessages, result[0].Type);
         }
 
         [Fact]
@@ -115,6 +118,9 @@ namespace NexusTeam.Server.Tests.Services
             Assert.Equal("member", fixture.Chats.ById.CreatedBy);
             Assert.Equal(("chat-1", "owner"), fixture.Folders.RemovedFromUser);
             Assert.Equal(fixture.Now, fixture.Chats.ById.UpdatedAt);
+            Assert.NotNull(fixture.Messages.Created);
+            Assert.True(fixture.Messages.Created!.IsSystem);
+            Assert.Equal("A member left the group", fixture.Messages.Created.Content);
         }
 
         [Fact]
@@ -127,6 +133,69 @@ namespace NexusTeam.Server.Tests.Services
 
             Assert.Equal("chat-1", fixture.Chats.DeletedId);
             Assert.Equal("chat-1", fixture.Folders.RemovedFromAll);
+        }
+
+        [Fact]
+        public async Task AddParticipantsAsync_AsOwner_AddsUserAndWritesSystemMessage()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat(ChatType.Group, "owner", "member");
+            fixture.Chats.ById.CreatedBy = "owner";
+            fixture.Users.Users["owner"] = User("owner", "owner");
+            fixture.Users.Users["member"] = User("member", "member");
+            fixture.Users.Users["newbie"] = User("newbie", "newbie", "New Person");
+
+            var result = await fixture.Service.AddParticipantsAsync("chat-1", "owner", new[] { "newbie" });
+
+            Assert.Contains("newbie", fixture.Chats.ById.ParticipantIds);
+            Assert.Equal("newbie", Assert.Single(result.AddedUserIds));
+            Assert.True(Assert.Single(result.SystemMessages).IsSystem);
+            Assert.Equal("New Person was added to the group", result.SystemMessages[0].Content);
+        }
+
+        [Theory]
+        [InlineData(false, ChatType.Group, "owner", typeof(NotFoundException))]
+        [InlineData(true, ChatType.DirectMessage, "owner", typeof(ValidationException))]
+        [InlineData(true, ChatType.Group, "member", typeof(UnauthorizedException))]
+        public async Task AddParticipantsAsync_RejectsInvalidRequests(bool exists, ChatType type, string userId, Type exceptionType)
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = exists ? Chat(type, "owner", "member") : null;
+            if (fixture.Chats.ById != null)
+            {
+                fixture.Chats.ById.CreatedBy = "owner";
+            }
+
+            await Assert.ThrowsAsync(exceptionType, () =>
+                fixture.Service.AddParticipantsAsync("chat-1", userId, new[] { "newbie" }));
+        }
+
+        [Fact]
+        public async Task RemoveParticipantAsync_AsOwner_RemovesUserAndWritesSystemMessage()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat(ChatType.Group, "owner", "member");
+            fixture.Chats.ById.CreatedBy = "owner";
+            fixture.Users.Users["owner"] = User("owner", "owner");
+            fixture.Users.Users["member"] = User("member", "member", "Sam");
+
+            var result = await fixture.Service.RemoveParticipantAsync("chat-1", "owner", "member");
+
+            Assert.DoesNotContain("member", fixture.Chats.ById.ParticipantIds);
+            Assert.Equal("member", result.RemovedUserId);
+            Assert.Equal(("chat-1", "member"), fixture.Folders.RemovedFromUser);
+            Assert.Equal("Sam was removed from the group", Assert.Single(result.SystemMessages).Content);
+        }
+
+        [Fact]
+        public async Task RemoveParticipantAsync_CannotRemoveSelf()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat(ChatType.Group, "owner", "member");
+            fixture.Chats.ById.CreatedBy = "owner";
+
+            await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.RemoveParticipantAsync("chat-1", "owner", "owner"));
         }
 
         [Theory]
@@ -162,7 +231,7 @@ namespace NexusTeam.Server.Tests.Services
 
             Assert.Equal("New Name", result.Name);
             Assert.Equal("New Description", result.Description);
-            Assert.Null(result.AvatarUrl);
+            Assert.Equal("/api/users/avatar/chat_chat-1", result.AvatarUrl);
             Assert.Equal(fixture.Now, fixture.Chats.ById.UpdatedAt);
         }
 
@@ -213,6 +282,55 @@ namespace NexusTeam.Server.Tests.Services
         }
 
         [Fact]
+        public async Task CreateChatAsync_WithSavedMessagesType_ThrowsValidation()
+        {
+            var fixture = new Fixture();
+            fixture.Users.Users["user-1"] = User("user-1", "one");
+            var request = CreateRequest("user-2");
+            request.Type = ChatType.SavedMessages;
+
+            await Assert.ThrowsAsync<ValidationException>(() => fixture.Service.CreateChatAsync(request, "user-1"));
+        }
+
+        [Fact]
+        public async Task DeleteChatAsync_SavedMessages_ThrowsValidation()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat(ChatType.SavedMessages, "user-1");
+
+            await Assert.ThrowsAsync<ValidationException>(() => fixture.Service.DeleteChatAsync("chat-1", "user-1"));
+        }
+
+        [Fact]
+        public async Task SetChatPinnedAsync_PinsExistingChat()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat(ChatType.DirectMessage, "user-1", "user-2");
+            fixture.Users.Users["user-1"] = User("user-1", "one");
+            fixture.Users.Users["user-2"] = User("user-2", "two");
+
+            var result = await fixture.Service.SetChatPinnedAsync("chat-1", "user-1", true);
+
+            Assert.True(result.IsPinned);
+            Assert.Contains("chat-1", fixture.Preferences.Current!.PinnedChats);
+        }
+
+        [Fact]
+        public async Task GetUserChatsAsync_DoesNotDuplicateSavedMessages()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.UserChats.Add(Chat(ChatType.SavedMessages, "user-1"));
+            fixture.Chats.UserChats[0].Id = "saved-user-1";
+            fixture.Chats.UserChats[0].Name = "Saved Messages";
+            fixture.Users.Users["user-1"] = User("user-1", "one");
+
+            var result = (await fixture.Service.GetUserChatsAsync("user-1")).ToList();
+
+            Assert.Single(result);
+            Assert.Null(fixture.Chats.Created);
+        }
+
+        [Fact]
         public async Task DeleteChatAsync_WhenCascadeFails_WrapsAsDomainException()
         {
             var fixture = new Fixture();
@@ -246,7 +364,7 @@ namespace NexusTeam.Server.Tests.Services
             public Fixture()
             {
                 this.Service = new ChatService(
-                    this.Chats, this.Users, this.Messages, this.Attachments, this.Folders,
+                    this.Chats, this.Users, this.Messages, this.Attachments, this.Folders, this.Preferences,
                     new FixedId(), new FixedClock(this.Now), new LoggerConfiguration().CreateLogger(), this.Status, this.Avatar);
             }
 
@@ -255,6 +373,7 @@ namespace NexusTeam.Server.Tests.Services
             public FakeMessageRepository Messages { get; } = new FakeMessageRepository();
             public FakeAttachmentRepository Attachments { get; } = new FakeAttachmentRepository();
             public FakeFolderRepository Folders { get; } = new FakeFolderRepository();
+            public FakePreferenceRepository Preferences { get; } = new FakePreferenceRepository();
             public FakeStatus Status { get; } = new FakeStatus();
             public FakeAvatar Avatar { get; } = new FakeAvatar();
             public ChatService Service { get; }
@@ -272,7 +391,13 @@ namespace NexusTeam.Server.Tests.Services
             public string? DeletedId { get; private set; }
             public Task<Chat?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(this.ById);
             public Task<IEnumerable<Chat>> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Chat>>(this.UserChats);
-            public Task CreateAsync(Chat chat, CancellationToken cancellationToken = default) { this.Created = chat; this.ById = chat; return Task.CompletedTask; }
+            public Task CreateAsync(Chat chat, CancellationToken cancellationToken = default)
+            {
+                this.Created = chat;
+                this.ById = chat;
+                this.UserChats.Add(chat);
+                return Task.CompletedTask;
+            }
             public Task UpdateAsync(Chat chat, CancellationToken cancellationToken = default) { this.ById = chat; return Task.CompletedTask; }
             public Task DeleteAsync(string id, CancellationToken cancellationToken = default) { this.DeletedId = id; return Task.CompletedTask; }
             public Task AddParticipantAsync(string chatId, string userId, CancellationToken cancellationToken = default) { this.ById?.ParticipantIds.Add(userId); return Task.CompletedTask; }
@@ -295,10 +420,15 @@ namespace NexusTeam.Server.Tests.Services
         private sealed class FakeMessageRepository : IMessageRepository
         {
             public List<string> DeletedMessageIds { get; } = new List<string>();
+            public Message? Created { get; private set; }
             public Exception? DeleteError { get; set; }
             public Task<Message?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult<Message?>(null);
             public Task<IEnumerable<Message>> GetByChatIdAsync(string chatId, int limit = 50, int offset = 0, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Message>>(Array.Empty<Message>());
-            public Task CreateAsync(Message message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task CreateAsync(Message message, CancellationToken cancellationToken = default)
+            {
+                this.Created = message;
+                return Task.CompletedTask;
+            }
             public Task UpdateAsync(Message message, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task<int> GetMessageCountAsync(string chatId, CancellationToken cancellationToken = default) => Task.FromResult(0);
@@ -330,6 +460,15 @@ namespace NexusTeam.Server.Tests.Services
             public Task DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task RemoveChatFromAllFoldersAsync(string chatId, CancellationToken cancellationToken = default) { this.RemovedFromAll = chatId; return Task.CompletedTask; }
             public Task RemoveChatFromUserFoldersAsync(string chatId, string userId, CancellationToken cancellationToken = default) { this.RemovedFromUser = (chatId, userId); return Task.CompletedTask; }
+        }
+
+        private sealed class FakePreferenceRepository : IUserPreferenceRepository
+        {
+            public NexusTeam.Server.Data.Models.UserPreference? Current { get; set; }
+            public Task<NexusTeam.Server.Data.Models.UserPreference?> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult(this.Current);
+            public Task CreateAsync(NexusTeam.Server.Data.Models.UserPreference preference, CancellationToken cancellationToken = default) { this.Current = preference; return Task.CompletedTask; }
+            public Task UpdateAsync(NexusTeam.Server.Data.Models.UserPreference preference, CancellationToken cancellationToken = default) { this.Current = preference; return Task.CompletedTask; }
+            public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         private sealed class FakeStatus : IUserStatusService

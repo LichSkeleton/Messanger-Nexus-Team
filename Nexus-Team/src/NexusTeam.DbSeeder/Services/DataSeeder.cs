@@ -95,7 +95,7 @@ public class DataSeeder
             insertCommand.Parameters.Add(new OracleParameter("email", user.Email));
             insertCommand.Parameters.Add(new OracleParameter("password_hash", passwordHash));
             insertCommand.Parameters.Add(new OracleParameter("display_name", user.DisplayName));
-            insertCommand.Parameters.Add(new OracleParameter("avatar_url", "/api/users/avatar/default"));
+            insertCommand.Parameters.Add(new OracleParameter("avatar_url", "/api/users/avatar/" + user.Id));
             insertCommand.Parameters.Add(new OracleParameter("created_at", OracleDbType.TimeStamp) { Value = now });
             insertCommand.Parameters.Add(new OracleParameter("updated_at", OracleDbType.TimeStamp) { Value = now });
             insertCommand.Parameters.Add(new OracleParameter("last_seen_at", OracleDbType.TimeStamp) { Value = now });

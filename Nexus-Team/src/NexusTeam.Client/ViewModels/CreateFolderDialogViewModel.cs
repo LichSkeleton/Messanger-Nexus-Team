@@ -1,5 +1,6 @@
 namespace NexusTeam.Client.ViewModels
 {
+    using System;
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
     using System.Linq;
@@ -15,6 +16,7 @@ namespace NexusTeam.Client.ViewModels
         private string? validationError;
         private bool canConfirm;
         private string? folderId;
+        private string searchText;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CreateFolderDialogViewModel"/> class.
@@ -22,6 +24,7 @@ namespace NexusTeam.Client.ViewModels
         public CreateFolderDialogViewModel()
         {
             this.folderName = string.Empty;
+            this.searchText = string.Empty;
             this.AvailableChats = new ObservableCollection<SelectableChatViewModel>();
             this.ConfirmCommand = new RelayCommand(this.OnConfirm, this.CanExecuteConfirm);
             this.CancelCommand = new RelayCommand(this.OnCancel);
@@ -56,6 +59,21 @@ namespace NexusTeam.Client.ViewModels
                 if (this.SetProperty(ref this.folderName, value))
                 {
                     this.UpdateCanConfirm();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the chat search filter.
+        /// </summary>
+        public string SearchText
+        {
+            get => this.searchText;
+            set
+            {
+                if (this.SetProperty(ref this.searchText, value))
+                {
+                    this.ApplySearchFilter();
                 }
             }
         }
@@ -136,7 +154,24 @@ namespace NexusTeam.Client.ViewModels
                 }
             }
 
+            this.ApplySearchFilter();
             this.UpdateCanConfirm();
+        }
+
+        private void ApplySearchFilter()
+        {
+            var filter = (this.searchText ?? string.Empty).Trim();
+            foreach (var item in this.AvailableChats)
+            {
+                if (string.IsNullOrEmpty(filter) || item.Chat == null)
+                {
+                    item.IsVisible = true;
+                    continue;
+                }
+
+                item.IsVisible = (item.Chat.Name ?? string.Empty)
+                    .Contains(filter, StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         private void UpdateCanConfirm()
@@ -144,9 +179,10 @@ namespace NexusTeam.Client.ViewModels
             var selectedCount = this.AvailableChats.Count(c => c.IsSelected);
             var hasName = !string.IsNullOrWhiteSpace(this.folderName);
 
-            // Folders are personal organizers — name alone is enough (empty folders allowed)
-            this.CanConfirm = hasName;
-            this.ValidationError = null;
+            this.CanConfirm = hasName && selectedCount >= 1;
+            this.ValidationError = hasName && selectedCount < 1
+                ? "Select at least one chat."
+                : null;
 
             this.ConfirmCommand.NotifyCanExecuteChanged();
         }
@@ -171,6 +207,7 @@ namespace NexusTeam.Client.ViewModels
     {
         private ConversationViewModel? chat;
         private bool isSelected;
+        private bool isVisible = true;
 
         /// <summary>
         /// Gets or sets the chat.
@@ -188,6 +225,15 @@ namespace NexusTeam.Client.ViewModels
         {
             get => this.isSelected;
             set => this.SetProperty(ref this.isSelected, value);
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this chat matches the current search filter.
+        /// </summary>
+        public bool IsVisible
+        {
+            get => this.isVisible;
+            set => this.SetProperty(ref this.isVisible, value);
         }
     }
 }

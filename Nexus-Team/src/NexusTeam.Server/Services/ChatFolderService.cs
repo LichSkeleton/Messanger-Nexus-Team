@@ -18,6 +18,8 @@ namespace NexusTeam.Server.Services
     /// </summary>
     public class ChatFolderService : IChatFolderService
     {
+        private const int MaxFoldersPerUser = 5;
+
         private readonly IChatFolderRepository folderRepository;
         private readonly IChatRepository chatRepository;
         private readonly IIdGenerator idGenerator;
@@ -84,22 +86,13 @@ namespace NexusTeam.Server.Services
                 throw new ValidationException("Folder name is required.");
             }
 
-            request.ChatIds ??= new List<string>();
-
-            // Validate that all chat IDs exist and user has access to them (empty folders are allowed)
-            foreach (var chatId in request.ChatIds)
+            var existingFolders = (await this.folderRepository.GetByUserIdAsync(userId, cancellationToken)).ToList();
+            if (existingFolders.Count >= MaxFoldersPerUser)
             {
-                var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
-                if (chat == null)
-                {
-                    throw new ValidationException($"Chat with ID '{chatId}' does not exist.");
-                }
-
-                if (!chat.ParticipantIds.Contains(userId))
-                {
-                    throw new ValidationException($"You do not have access to chat '{chatId}'.");
-                }
+                throw new ValidationException("You can have at most 5 folders.");
             }
+
+            var chatIds = await this.ValidateFolderChatsAsync(request.ChatIds, userId, cancellationToken);
 
             var now = this.clock.UtcNow;
             var folder = new ChatFolder
@@ -107,7 +100,7 @@ namespace NexusTeam.Server.Services
                 Id = this.idGenerator.GenerateId(),
                 Name = request.Name.Trim(),
                 UserId = userId,
-                ChatIds = request.ChatIds.Distinct().ToList(),
+                ChatIds = chatIds,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
@@ -139,25 +132,8 @@ namespace NexusTeam.Server.Services
                 throw new ValidationException("Folder name is required.");
             }
 
-            request.ChatIds ??= new List<string>();
-
-            // Validate that all chat IDs exist and user has access to them (empty folders are allowed)
-            foreach (var chatId in request.ChatIds)
-            {
-                var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
-                if (chat == null)
-                {
-                    throw new ValidationException($"Chat with ID '{chatId}' does not exist.");
-                }
-
-                if (!chat.ParticipantIds.Contains(userId))
-                {
-                    throw new ValidationException($"You do not have access to chat '{chatId}'.");
-                }
-            }
-
             folder.Name = request.Name.Trim();
-            folder.ChatIds = request.ChatIds.Distinct().ToList();
+            folder.ChatIds = await this.ValidateFolderChatsAsync(request.ChatIds, userId, cancellationToken);
             folder.UpdatedAt = this.clock.UtcNow;
 
             await this.folderRepository.UpdateAsync(folder, cancellationToken);
@@ -184,6 +160,38 @@ namespace NexusTeam.Server.Services
 
             await this.folderRepository.DeleteAsync(folderId, cancellationToken);
             this.logger.Information("Folder {FolderId} deleted successfully by user {UserId}", folderId, userId);
+        }
+
+        private async Task<List<string>> ValidateFolderChatsAsync(
+            IEnumerable<string>? chatIds,
+            string userId,
+            CancellationToken cancellationToken)
+        {
+            var ids = (chatIds ?? new List<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (ids.Count == 0)
+            {
+                throw new ValidationException("Folder must contain at least one chat.");
+            }
+
+            foreach (var chatId in ids)
+            {
+                var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
+                if (chat == null)
+                {
+                    throw new ValidationException($"Chat with ID '{chatId}' does not exist.");
+                }
+
+                if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
+                {
+                    throw new ValidationException($"You do not have access to chat '{chatId}'.");
+                }
+            }
+
+            return ids;
         }
 
         private ChatFolderDto MapToDto(ChatFolder folder)

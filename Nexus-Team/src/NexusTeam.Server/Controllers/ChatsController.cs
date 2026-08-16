@@ -165,42 +165,40 @@ namespace NexusTeam.Server.Controllers
 
             request.ChatId = id;
             var message = await this.messageService.SendMessageAsync(request, userId, cancellationToken);
+            await this.BroadcastNewMessageAsync(id, userId, message, cancellationToken);
 
-            // Broadcast message to all chat participants via WebSocket
-            try
+            return this.Created($"/api/chats/{id}/messages", message);
+        }
+
+        /// <summary>
+        /// Forwards an existing message into the specified chat as an independent copy.
+        /// </summary>
+        /// <param name="id">The target chat ID.</param>
+        /// <param name="request">The forward request.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The created forwarded message DTO.</returns>
+        [HttpPost("{id}/messages/forward")]
+        [ProducesResponseType(typeof(MessageDto), 201)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        public async Task<ActionResult<MessageDto>> ForwardMessage(
+            string id,
+            [FromBody] ForwardMessageRequest request,
+            CancellationToken cancellationToken)
+        {
+            var userId = this.HttpContext.Items["UserId"] as string;
+            if (string.IsNullOrEmpty(userId))
             {
-                var chat = await this.chatService.GetChatByIdAsync(id, userId, cancellationToken);
-                if (chat != null)
-                {
-                    var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
-                    var envelope = new WebSocketMessageEnvelope
-                    {
-                        Type = WebSocketMessageType.NewMessage,
-                        MessageId = message.Id,
-                        Payload = JsonSerializer.SerializeToElement(message, options),
-                    };
-
-                    var messageJson = JsonSerializer.Serialize(envelope, options);
-
-                    // Send to all participants
-                    var broadcastTasks = new List<Task>();
-                    foreach (var participantId in chat.ParticipantIds)
-                    {
-                        broadcastTasks.Add(this.connectionManager.BroadcastToUserAsync(
-                            participantId,
-                            messageJson,
-                            cancellationToken));
-                    }
-
-                    await Task.WhenAll(broadcastTasks);
-                    this.logger.Debug("Message {MessageId} broadcasted to {Count} participants in chat {ChatId}", message.Id, chat.ParticipantIds.Count, id);
-                }
+                return this.Unauthorized();
             }
-            catch (Exception ex)
+
+            if (request == null || string.IsNullOrWhiteSpace(request.MessageId))
             {
-                // Log but don't fail the request - message was already saved
-                this.logger.Warning(ex, "Failed to broadcast message {MessageId} via WebSocket", message.Id);
+                return this.BadRequest(new { error = "Message ID is required." });
             }
+
+            var message = await this.messageService.ForwardMessageAsync(id, request.MessageId, userId, cancellationToken);
+            await this.BroadcastNewMessageAsync(id, userId, message, cancellationToken);
 
             return this.Created($"/api/chats/{id}/messages", message);
         }
@@ -476,6 +474,10 @@ namespace NexusTeam.Server.Controllers
             {
                 return this.Unauthorized();
             }
+            catch (Shared.Exceptions.ValidationException ex)
+            {
+                return this.BadRequest(new { error = ex.Message });
+            }
             catch (Shared.Exceptions.DomainException ex)
             {
                 this.logger.Error(ex, "Error deleting chat {ChatId}", id);
@@ -504,8 +506,15 @@ namespace NexusTeam.Server.Controllers
 
             try
             {
-                await this.chatService.LeaveChatAsync(id, userId, cancellationToken);
+                var result = await this.chatService.LeaveChatAsync(id, userId, cancellationToken);
                 this.logger.Information("User {UserId} left chat {ChatId}", userId, id);
+
+                if (!result.ChatDeleted && result.Chat != null)
+                {
+                    await this.BroadcastSystemMessagesAsync(result, cancellationToken);
+                    await this.NotifyChatUpdatedAsync(result.Chat, userId, cancellationToken);
+                }
+
                 return this.NoContent();
             }
             catch (Shared.Exceptions.NotFoundException)
@@ -525,6 +534,170 @@ namespace NexusTeam.Server.Controllers
                 this.logger.Error(ex, "Error leaving chat {ChatId}", id);
                 return this.StatusCode(500, new { error = ex.Message });
             }
+        }
+
+        /// <summary>
+        /// Adds members to a group chat. Only the owner can add users.
+        /// </summary>
+        /// <param name="id">The chat ID.</param>
+        /// <param name="request">Users to add.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat.</returns>
+        [HttpPost("{id}/participants")]
+        [ProducesResponseType(typeof(ChatDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<ChatDto>> AddParticipants(
+            string id,
+            [FromBody] AddChatParticipantsRequest? request,
+            CancellationToken cancellationToken)
+        {
+            var userId = this.HttpContext.Items["UserId"] as string;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return this.Unauthorized();
+            }
+
+            if (request == null)
+            {
+                return this.BadRequest(new { error = "Request body is required." });
+            }
+
+            if (!this.ModelState.IsValid)
+            {
+                return this.BadRequest(this.ModelState);
+            }
+
+            try
+            {
+                var result = await this.chatService.AddParticipantsAsync(
+                    id,
+                    userId,
+                    request.UserIds,
+                    cancellationToken);
+
+                if (result.Chat != null)
+                {
+                    await this.BroadcastSystemMessagesAsync(result, cancellationToken);
+                    await this.NotifyChatUpdatedAsync(result.Chat, userId, cancellationToken);
+                    await this.NotifyAddedMembersAsync(result, userId, cancellationToken);
+                }
+
+                return this.Ok(result.Chat);
+            }
+            catch (Shared.Exceptions.NotFoundException)
+            {
+                return this.NotFound();
+            }
+            catch (Shared.Exceptions.UnauthorizedException ex)
+            {
+                return this.Unauthorized(new { error = ex.Message });
+            }
+            catch (Shared.Exceptions.ValidationException ex)
+            {
+                return this.BadRequest(new { error = ex.Message });
+            }
+            catch (Shared.Exceptions.DomainException ex)
+            {
+                this.logger.Error(ex, "Error adding members to chat {ChatId}", id);
+                return this.StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Removes a member from a group chat. Only the owner can remove users.
+        /// </summary>
+        /// <param name="id">The chat ID.</param>
+        /// <param name="userId">The user ID to remove.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat.</returns>
+        [HttpDelete("{id}/participants/{userId}")]
+        [ProducesResponseType(typeof(ChatDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<ChatDto>> RemoveParticipant(
+            string id,
+            string userId,
+            CancellationToken cancellationToken)
+        {
+            var requesterId = this.HttpContext.Items["UserId"] as string;
+            if (string.IsNullOrEmpty(requesterId))
+            {
+                return this.Unauthorized();
+            }
+
+            try
+            {
+                var result = await this.chatService.RemoveParticipantAsync(
+                    id,
+                    requesterId,
+                    userId,
+                    cancellationToken);
+
+                if (result.Chat != null)
+                {
+                    await this.BroadcastSystemMessagesAsync(result, cancellationToken);
+                    await this.NotifyChatUpdatedAsync(result.Chat, requesterId, cancellationToken);
+                }
+
+                if (!string.IsNullOrEmpty(result.RemovedUserId))
+                {
+                    await this.NotifyChatDeletedAsync(id, result.RemovedUserId, cancellationToken);
+                }
+
+                return this.Ok(result.Chat);
+            }
+            catch (Shared.Exceptions.NotFoundException)
+            {
+                return this.NotFound();
+            }
+            catch (Shared.Exceptions.UnauthorizedException ex)
+            {
+                return this.Unauthorized(new { error = ex.Message });
+            }
+            catch (Shared.Exceptions.ValidationException ex)
+            {
+                return this.BadRequest(new { error = ex.Message });
+            }
+            catch (Shared.Exceptions.DomainException ex)
+            {
+                this.logger.Error(ex, "Error removing member from chat {ChatId}", id);
+                return this.StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Pins a chat for the current user. Pinned chats appear at the top of the All list.
+        /// </summary>
+        /// <param name="id">The chat ID.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat DTO.</returns>
+        [HttpPost("{id}/pin")]
+        [ProducesResponseType(typeof(ChatDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<ChatDto>> PinChat(string id, CancellationToken cancellationToken)
+        {
+            return await this.SetPinnedAsync(id, true, cancellationToken);
+        }
+
+        /// <summary>
+        /// Unpins a chat for the current user.
+        /// </summary>
+        /// <param name="id">The chat ID.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat DTO.</returns>
+        [HttpDelete("{id}/pin")]
+        [ProducesResponseType(typeof(ChatDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<ChatDto>> UnpinChat(string id, CancellationToken cancellationToken)
+        {
+            return await this.SetPinnedAsync(id, false, cancellationToken);
         }
 
         /// <summary>
@@ -642,6 +815,117 @@ namespace NexusTeam.Server.Controllers
             {
                 this.logger.Error(ex, "Error uploading avatar for chat {ChatId}", id);
                 return this.StatusCode(500, new { error = "Failed to upload avatar." });
+            }
+        }
+
+        /// <summary>
+        /// Broadcasts system membership messages to remaining chat participants.
+        /// </summary>
+        private async Task BroadcastSystemMessagesAsync(
+            ChatMembershipChangeResult result,
+            CancellationToken cancellationToken)
+        {
+            if (result.Chat == null || result.SystemMessages == null || result.SystemMessages.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
+                var broadcastTasks = new List<Task>();
+
+                foreach (var message in result.SystemMessages)
+                {
+                    var envelope = new WebSocketMessageEnvelope
+                    {
+                        Type = WebSocketMessageType.NewMessage,
+                        MessageId = message.Id,
+                        Payload = JsonSerializer.SerializeToElement(message, options),
+                    };
+                    var messageJson = JsonSerializer.Serialize(envelope, options);
+
+                    foreach (var participantId in result.Chat.ParticipantIds)
+                    {
+                        broadcastTasks.Add(this.connectionManager.BroadcastToUserAsync(
+                            participantId,
+                            messageJson,
+                            cancellationToken));
+                    }
+                }
+
+                await Task.WhenAll(broadcastTasks);
+            }
+            catch (Exception ex)
+            {
+                this.logger.Warning(ex, "Failed to broadcast system messages for chat {ChatId}", result.Chat.Id);
+            }
+        }
+
+        /// <summary>
+        /// Notifies newly added members so the group appears in their chat list.
+        /// </summary>
+        private async Task NotifyAddedMembersAsync(
+            ChatMembershipChangeResult result,
+            string ownerUserId,
+            CancellationToken cancellationToken)
+        {
+            if (result.Chat == null || result.AddedUserIds == null || result.AddedUserIds.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
+                var envelope = new WebSocketMessageEnvelope
+                {
+                    Type = WebSocketMessageType.ChatCreated,
+                    Payload = JsonSerializer.SerializeToElement(result.Chat, options),
+                };
+                var messageJson = JsonSerializer.Serialize(envelope, options);
+
+                var broadcastTasks = new List<Task>();
+                foreach (var addedUserId in result.AddedUserIds)
+                {
+                    if (addedUserId == ownerUserId)
+                    {
+                        continue;
+                    }
+
+                    broadcastTasks.Add(this.connectionManager.BroadcastToUserAsync(
+                        addedUserId,
+                        messageJson,
+                        cancellationToken));
+                }
+
+                await Task.WhenAll(broadcastTasks);
+            }
+            catch (Exception ex)
+            {
+                this.logger.Warning(ex, "Failed to notify added members for chat {ChatId}", result.Chat.Id);
+            }
+        }
+
+        /// <summary>
+        /// Notifies a user that they were removed from a chat so clients can drop it.
+        /// </summary>
+        private async Task NotifyChatDeletedAsync(string chatId, string userId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
+                var envelope = new WebSocketMessageEnvelope
+                {
+                    Type = WebSocketMessageType.ChatDeleted,
+                    Payload = JsonSerializer.SerializeToElement(new ChatDeletedPayload { ChatId = chatId }, options),
+                };
+                var messageJson = JsonSerializer.Serialize(envelope, options);
+                await this.connectionManager.BroadcastToUserAsync(userId, messageJson, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                this.logger.Warning(ex, "Failed to notify user {UserId} they were removed from chat {ChatId}", userId, chatId);
             }
         }
 
@@ -775,6 +1059,78 @@ namespace NexusTeam.Server.Controllers
             catch (Exception ex)
             {
                 this.logger.Warning(ex, "Failed to sync presence after creating chat {ChatId}", chat.Id);
+            }
+        }
+
+        private async Task<ActionResult<ChatDto>> SetPinnedAsync(string id, bool pinned, CancellationToken cancellationToken)
+        {
+            var userId = this.HttpContext.Items["UserId"] as string;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return this.Unauthorized();
+            }
+
+            try
+            {
+                var chat = await this.chatService.SetChatPinnedAsync(id, userId, pinned, cancellationToken);
+                return this.Ok(chat);
+            }
+            catch (Shared.Exceptions.NotFoundException)
+            {
+                return this.NotFound();
+            }
+            catch (Shared.Exceptions.UnauthorizedException ex)
+            {
+                return this.Unauthorized(new { error = ex.Message });
+            }
+            catch (Shared.Exceptions.ValidationException ex)
+            {
+                return this.BadRequest(new { error = ex.Message });
+            }
+        }
+
+        private async Task BroadcastNewMessageAsync(
+            string chatId,
+            string userId,
+            MessageDto message,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var chat = await this.chatService.GetChatByIdAsync(chatId, userId, cancellationToken);
+                if (chat == null)
+                {
+                    return;
+                }
+
+                var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
+                var envelope = new WebSocketMessageEnvelope
+                {
+                    Type = WebSocketMessageType.NewMessage,
+                    MessageId = message.Id,
+                    Payload = JsonSerializer.SerializeToElement(message, options),
+                };
+
+                var messageJson = JsonSerializer.Serialize(envelope, options);
+                var broadcastTasks = new List<Task>();
+                foreach (var participantId in chat.ParticipantIds)
+                {
+                    broadcastTasks.Add(this.connectionManager.BroadcastToUserAsync(
+                        participantId,
+                        messageJson,
+                        cancellationToken));
+                }
+
+                await Task.WhenAll(broadcastTasks);
+                this.logger.Debug(
+                    "Message {MessageId} broadcasted to {Count} participants in chat {ChatId}",
+                    message.Id,
+                    chat.ParticipantIds.Count,
+                    chatId);
+            }
+            catch (Exception ex)
+            {
+                this.logger.Warning(ex, "Failed to broadcast message {MessageId} via WebSocket", message.Id);
             }
         }
     }

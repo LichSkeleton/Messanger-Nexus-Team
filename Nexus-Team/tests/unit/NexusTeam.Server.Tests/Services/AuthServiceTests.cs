@@ -43,7 +43,7 @@ namespace NexusTeam.Server.Tests.Services
             Assert.Equal("alice@example.com", created.Email);
             Assert.Equal("hashed:Secure123", created.PasswordHash);
             Assert.Equal("Alice", created.DisplayName);
-            Assert.Equal("/api/users/avatar/default", created.AvatarUrl);
+            Assert.Equal("/api/users/avatar/generated-user-id", created.AvatarUrl);
             Assert.Equal(UserStatus.Offline, created.Status);
             Assert.Equal(FixedNow, created.CreatedAt);
             Assert.Equal(FixedNow, created.UpdatedAt);

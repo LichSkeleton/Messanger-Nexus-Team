@@ -70,15 +70,36 @@ namespace NexusTeam.Server.Tests.Services
         }
 
         [Fact]
-        public async Task CreateFolderAsync_WithNullChats_CreatesEmptyFolder()
+        public async Task CreateFolderAsync_WithNullChats_ThrowsValidation()
         {
             var fixture = new Fixture();
             var request = new CreateChatFolderRequest { Name = "Empty", ChatIds = null! };
 
-            var result = await fixture.Service.CreateFolderAsync(request, "user-1");
+            var exception = await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.CreateFolderAsync(request, "user-1"));
 
-            Assert.Empty(result.ChatIds);
-            Assert.NotNull(request.ChatIds);
+            Assert.Contains("at least one chat", exception.Message);
+        }
+
+        [Fact]
+        public async Task CreateFolderAsync_WhenFolderLimitReached_ThrowsValidation()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById["chat-1"] = CreateChat("chat-1", "user-1");
+            for (var i = 0; i < 5; i++)
+            {
+                fixture.Folders.UserFolders.Add(CreateFolder(owner: "user-1"));
+            }
+
+            var exception = await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.CreateFolderAsync(new CreateChatFolderRequest
+                {
+                    Name = "Sixth",
+                    ChatIds = new List<string> { "chat-1" },
+                }, "user-1"));
+
+            Assert.Contains("at most 5 folders", exception.Message);
+            Assert.Null(fixture.Folders.Created);
         }
 
         [Fact]
@@ -152,7 +173,7 @@ namespace NexusTeam.Server.Tests.Services
 
             await Assert.ThrowsAsync<NotFoundException>(() => fixture.Service.UpdateFolderAsync(
                 "missing",
-                new CreateChatFolderRequest { Name = "Updated" },
+                new CreateChatFolderRequest { Name = "Updated", ChatIds = new List<string> { "chat-1" } },
                 "user-1"));
         }
 
@@ -164,7 +185,7 @@ namespace NexusTeam.Server.Tests.Services
 
             await Assert.ThrowsAsync<UnauthorizedException>(() => fixture.Service.UpdateFolderAsync(
                 "folder-1",
-                new CreateChatFolderRequest { Name = "Updated" },
+                new CreateChatFolderRequest { Name = "Updated", ChatIds = new List<string> { "chat-1" } },
                 "user-1"));
         }
 

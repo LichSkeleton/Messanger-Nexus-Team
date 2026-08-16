@@ -94,6 +94,15 @@ namespace NexusTeam.Client.Services
         Task<MessageDto> SendMessageViaHttpAsync(string chatId, string content, string? replyToId = null, List<string>? attachmentIds = null, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Forwards an existing message into another chat as an independent copy.
+        /// </summary>
+        /// <param name="targetChatId">The chat to send the copy to.</param>
+        /// <param name="messageId">The source message ID.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The created forwarded message DTO.</returns>
+        Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Edits an existing message.
         /// </summary>
         /// <param name="messageId">The message ID.</param>
@@ -245,6 +254,30 @@ namespace NexusTeam.Client.Services
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
         Task LeaveChatAsync(string chatId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Adds users to a group chat (owner only).
+        /// </summary>
+        /// <param name="chatId">The chat ID.</param>
+        /// <param name="userIds">User IDs to add.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat DTO.</returns>
+        Task<ChatDto> AddChatParticipantsAsync(
+            string chatId,
+            List<string> userIds,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Removes a user from a group chat (owner only).
+        /// </summary>
+        /// <param name="chatId">The chat ID.</param>
+        /// <param name="userId">The user ID to remove.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The updated chat DTO.</returns>
+        Task<ChatDto> RemoveChatParticipantAsync(
+            string chatId,
+            string userId,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Updates group chat name/description (owner only).

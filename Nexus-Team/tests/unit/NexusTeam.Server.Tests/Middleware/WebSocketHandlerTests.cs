@@ -59,7 +59,15 @@ namespace NexusTeam.Server.Tests.Middleware
         {
             public List<ChatDto> Items { get; } = new List<ChatDto>(); public Exception? Error { get; set; }
             public Task<IEnumerable<ChatDto>> GetUserChatsAsync(string userId, CancellationToken cancellationToken = default) => this.Error == null ? Task.FromResult<IEnumerable<ChatDto>>(this.Items) : Task.FromException<IEnumerable<ChatDto>>(this.Error);
-            public Task<ChatDto?> GetChatByIdAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<ChatDto> UpdateChatAsync(string chatId, string userId, UpdateChatRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException(); public Task<ChatDto> UploadChatAvatarAsync(string chatId, string userId, string fileName, System.IO.Stream fileStream, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto?> GetChatByIdAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatMembershipChangeResult> LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatMembershipChangeResult> AddParticipantsAsync(string chatId, string ownerUserId, IReadOnlyList<string> userIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatMembershipChangeResult> RemoveParticipantAsync(string chatId, string ownerUserId, string targetUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> UpdateChatAsync(string chatId, string userId, UpdateChatRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> UploadChatAvatarAsync(string chatId, string userId, string fileName, System.IO.Stream fileStream, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<ChatDto> SetChatPinnedAsync(string chatId, string userId, bool pinned, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         }
 
         private sealed class Connections : IWebSocketConnectionManager

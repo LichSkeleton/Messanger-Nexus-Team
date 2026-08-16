@@ -50,6 +50,39 @@
                         "null"
                     ]
                 },
+                "replyToSenderId": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "replyToSenderName": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "replyToContent": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "isForwarded": {
+                    "bsonType": "bool"
+                },
+                "forwardedFromSenderId": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "forwardedFromSenderName": {
+                    "bsonType": [
+                        "string",
+                        "null"
+                    ]
+                },
                 "isDeleted": {
                     "bsonType": "bool"
                 },

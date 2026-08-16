@@ -59,10 +59,52 @@ namespace NexusTeam.Server.Data.Models
         public string? ReplyToId { get; set; }
 
         /// <summary>
+        /// Gets or sets the sender ID of the message being replied to (snapshot).
+        /// </summary>
+        [BsonElement("replyToSenderId")]
+        public string? ReplyToSenderId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the sender display name of the message being replied to (snapshot).
+        /// </summary>
+        [BsonElement("replyToSenderName")]
+        public string? ReplyToSenderName { get; set; }
+
+        /// <summary>
+        /// Gets or sets a content preview of the message being replied to (snapshot).
+        /// </summary>
+        [BsonElement("replyToContent")]
+        public string? ReplyToContent { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this message was forwarded.
+        /// </summary>
+        [BsonElement("isForwarded")]
+        public bool IsForwarded { get; set; }
+
+        /// <summary>
+        /// Gets or sets the original sender ID of a forwarded message (snapshot).
+        /// </summary>
+        [BsonElement("forwardedFromSenderId")]
+        public string? ForwardedFromSenderId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the original sender display name of a forwarded message (snapshot).
+        /// </summary>
+        [BsonElement("forwardedFromSenderName")]
+        public string? ForwardedFromSenderName { get; set; }
+
+        /// <summary>
         /// Gets or sets a value indicating whether the message is deleted.
         /// </summary>
         [BsonElement("isDeleted")]
         public bool IsDeleted { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this is a system event message.
+        /// </summary>
+        [BsonElement("isSystem")]
+        public bool IsSystem { get; set; }
 
         /// <summary>
         /// Gets or sets the reactions for this message.

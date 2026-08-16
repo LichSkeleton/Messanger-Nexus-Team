@@ -51,11 +51,23 @@ namespace NexusTeam.Client.ViewModels
             this.createdBy = chatDto.CreatedBy ?? string.Empty;
             this.currentUserId = currentUserId;
 
-            // Personal chats: DirectMessage type, or exactly two participants (legacy/mis-typed chats)
-            var isPersonalChat = this.type == ChatType.DirectMessage
-                || (this.participants.Count == 2);
+            if ((this.type == ChatType.Group || this.type == ChatType.Channel)
+                && string.IsNullOrWhiteSpace(this.avatarUrl))
+            {
+                this.avatarUrl = $"/api/users/avatar/chat_{this.id}";
+            }
 
-            if (isPersonalChat && this.participants.Count > 0)
+            // Personal chats: DirectMessage type, or exactly two participants (legacy/mis-typed chats)
+            var isSavedMessages = this.type == ChatType.SavedMessages
+                || (!string.IsNullOrEmpty(this.id) && this.id.StartsWith("saved-", StringComparison.Ordinal));
+            var isPersonalChat = !isSavedMessages
+                && (this.type == ChatType.DirectMessage || this.participants.Count == 2);
+
+            if (isSavedMessages)
+            {
+                this.name = "Saved Messages";
+            }
+            else if (isPersonalChat && this.participants.Count > 0)
             {
                 // Find the other participant (not the current user)
                 var otherUser = !string.IsNullOrEmpty(currentUserId)
@@ -212,9 +224,11 @@ namespace NexusTeam.Client.ViewModels
         /// <summary>
         /// Gets a value indicating whether the online-status circle should be shown (personal chats).
         /// </summary>
-        public bool ShowStatusIndicator => !string.IsNullOrEmpty(this.otherUserId)
+        public bool ShowStatusIndicator => this.type != ChatType.SavedMessages
+            && !(this.id ?? string.Empty).StartsWith("saved-", StringComparison.Ordinal)
+            && (!string.IsNullOrEmpty(this.otherUserId)
             || this.type == ChatType.DirectMessage
-            || this.participants.Count == 2;
+            || this.participants.Count == 2);
 
         /// <summary>
         /// Gets a value indicating whether this conversation is a group or channel.
@@ -227,6 +241,25 @@ namespace NexusTeam.Client.ViewModels
         public bool IsOwner => this.IsGroup
             && !string.IsNullOrEmpty(this.currentUserId)
             && string.Equals(this.createdBy, this.currentUserId, StringComparison.Ordinal);
+
+        /// <summary>
+        /// Gets the number of members in this conversation.
+        /// </summary>
+        public int MemberCount => this.participants?.Count ?? 0;
+
+        /// <summary>
+        /// Gets a short members label for group headers.
+        /// </summary>
+        public string MemberCountText => this.MemberCount == 1
+            ? "1 member"
+            : $"{this.MemberCount} members";
+
+        /// <summary>
+        /// Gets a value indicating whether this conversation can be deleted by the current user.
+        /// Groups can only be deleted by the owner. Saved Messages cannot be deleted.
+        /// </summary>
+        public bool CanDeleteChat => this.type != ChatType.SavedMessages
+            && (!this.IsGroup || this.IsOwner);
 
         /// <summary>
         /// Gets the creator/owner user ID.
@@ -293,7 +326,21 @@ namespace NexusTeam.Client.ViewModels
             if (participants != null)
             {
                 this.participants = participants;
+                this.OnPropertyChanged(nameof(this.Participants));
+                this.OnPropertyChanged(nameof(this.MemberCount));
+                this.OnPropertyChanged(nameof(this.MemberCountText));
             }
+        }
+
+        /// <summary>
+        /// Updates the owner ID after a membership change.
+        /// </summary>
+        /// <param name="createdBy">The new owner user ID.</param>
+        public void UpdateCreatedBy(string createdBy)
+        {
+            this.CreatedBy = createdBy ?? string.Empty;
+            this.OnPropertyChanged(nameof(this.IsOwner));
+            this.OnPropertyChanged(nameof(this.CanDeleteChat));
         }
 
         /// <summary>

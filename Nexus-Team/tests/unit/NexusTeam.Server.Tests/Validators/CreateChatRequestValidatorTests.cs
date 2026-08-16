@@ -45,6 +45,18 @@ namespace NexusTeam.Server.Tests.Validators
         }
 
         [Fact]
+        public void Validate_WithSavedMessagesType_HasPropertyError()
+        {
+            var request = CreateValidRequest();
+            request.Type = ChatType.SavedMessages;
+
+            var result = this.validator.TestValidate(request);
+
+            result.ShouldHaveValidationErrorFor(x => x.Type)
+                .WithErrorMessage("Saved Messages chats are created automatically.");
+        }
+
+        [Fact]
         public void Validate_WithUnknownChatType_HasPropertyError()
         {
             var request = CreateValidRequest();

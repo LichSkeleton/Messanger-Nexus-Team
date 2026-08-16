@@ -38,6 +38,14 @@ namespace NexusTeam.Client.ViewModels
         private string? senderAvatarUrl;
         private bool isGroupChat;
         private bool isContentExpanded;
+        private bool isSystem;
+        private string? replyToId;
+        private string? replyToSenderId;
+        private string? replyToSenderName;
+        private string? replyToContent;
+        private bool isForwarded;
+        private string? forwardedFromSenderId;
+        private string? forwardedFromSenderName;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MessageViewModel"/> class.
@@ -72,6 +80,20 @@ namespace NexusTeam.Client.ViewModels
             this.senderName = senderName;
             this.senderAvatarUrl = senderAvatarUrl;
             this.isGroupChat = isGroupChat;
+            this.isSystem = messageDto.IsSystem
+                || (!string.IsNullOrWhiteSpace(messageDto.Content)
+                    && (messageDto.Content.EndsWith(" left the group", StringComparison.Ordinal)
+                        || messageDto.Content.EndsWith(" was added to the group", StringComparison.Ordinal)
+                        || messageDto.Content.EndsWith(" was removed from the group", StringComparison.Ordinal)));
+            this.replyToId = messageDto.ReplyToId;
+            this.replyToSenderId = messageDto.ReplyToSenderId;
+            this.replyToSenderName = messageDto.ReplyToSenderName;
+            this.replyToContent = messageDto.ReplyToContent;
+            this.isForwarded = messageDto.IsForwarded
+                || !string.IsNullOrWhiteSpace(messageDto.ForwardedFromSenderName)
+                || !string.IsNullOrWhiteSpace(messageDto.ForwardedFromSenderId);
+            this.forwardedFromSenderId = messageDto.ForwardedFromSenderId;
+            this.forwardedFromSenderName = messageDto.ForwardedFromSenderName;
             this.attachments = new ObservableCollection<AttachmentViewModel>(
                 messageDto.Attachments?.Select(a => new AttachmentViewModel(a, fileAttachmentService)) ?? Enumerable.Empty<AttachmentViewModel>());
             this.reactions = messageDto.Reactions ?? new Dictionary<string, List<string>>();
@@ -110,6 +132,144 @@ namespace NexusTeam.Client.ViewModels
             get => this.isGroupChat;
             private set => this.SetProperty(ref this.isGroupChat, value);
         }
+
+        /// <summary>
+        /// Gets a value indicating whether this is a centered system event.
+        /// </summary>
+        public bool IsSystem
+        {
+            get => this.isSystem;
+            private set => this.SetProperty(ref this.isSystem, value);
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether this message can be replied to or forwarded.
+        /// </summary>
+        public bool CanQuote => !this.isDeleted && !this.isSystem;
+
+        /// <summary>
+        /// Gets a value indicating whether the current user can edit or delete this message.
+        /// </summary>
+        public bool CanManageOwnMessage => this.isCurrentUser && this.CanQuote;
+
+        /// <summary>
+        /// Gets the ID of the message this is replying to.
+        /// </summary>
+        public string? ReplyToId
+        {
+            get => this.replyToId;
+            private set
+            {
+                if (this.SetProperty(ref this.replyToId, value))
+                {
+                    this.OnPropertyChanged(nameof(this.HasReply));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the sender ID of the replied-to message.
+        /// </summary>
+        public string? ReplyToSenderId
+        {
+            get => this.replyToSenderId;
+            private set => this.SetProperty(ref this.replyToSenderId, value);
+        }
+
+        /// <summary>
+        /// Gets the sender name shown in the reply quote.
+        /// </summary>
+        public string? ReplyToSenderName
+        {
+            get => this.replyToSenderName;
+            private set
+            {
+                if (this.SetProperty(ref this.replyToSenderName, value))
+                {
+                    this.OnPropertyChanged(nameof(this.ReplyQuoteTitle));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the content preview shown in the reply quote.
+        /// </summary>
+        public string? ReplyToContent
+        {
+            get => this.replyToContent;
+            private set
+            {
+                if (this.SetProperty(ref this.replyToContent, value))
+                {
+                    this.OnPropertyChanged(nameof(this.ReplyQuotePreview));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether this message is a reply.
+        /// </summary>
+        public bool HasReply => !string.IsNullOrEmpty(this.replyToId);
+
+        /// <summary>
+        /// Gets the title shown on the reply quote strip.
+        /// </summary>
+        public string ReplyQuoteTitle => string.IsNullOrWhiteSpace(this.replyToSenderName)
+            ? "Reply"
+            : this.replyToSenderName;
+
+        /// <summary>
+        /// Gets the preview text shown on the reply quote strip.
+        /// </summary>
+        public string ReplyQuotePreview => string.IsNullOrWhiteSpace(this.replyToContent)
+            ? "Message"
+            : this.replyToContent;
+
+        /// <summary>
+        /// Gets a value indicating whether this message was forwarded.
+        /// </summary>
+        public bool IsForwarded
+        {
+            get => this.isForwarded;
+            private set
+            {
+                if (this.SetProperty(ref this.isForwarded, value))
+                {
+                    this.OnPropertyChanged(nameof(this.ForwardedFromLabel));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the original sender ID of a forwarded message.
+        /// </summary>
+        public string? ForwardedFromSenderId
+        {
+            get => this.forwardedFromSenderId;
+            private set => this.SetProperty(ref this.forwardedFromSenderId, value);
+        }
+
+        /// <summary>
+        /// Gets the original sender name of a forwarded message.
+        /// </summary>
+        public string? ForwardedFromSenderName
+        {
+            get => this.forwardedFromSenderName;
+            private set
+            {
+                if (this.SetProperty(ref this.forwardedFromSenderName, value))
+                {
+                    this.OnPropertyChanged(nameof(this.ForwardedFromLabel));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the forwarded-from label shown above the bubble content.
+        /// </summary>
+        public string ForwardedFromLabel => string.IsNullOrWhiteSpace(this.forwardedFromSenderName)
+            ? "Forwarded message"
+            : $"Forwarded from {this.forwardedFromSenderName}";
 
         /// <summary>
         /// Gets a value indicating whether the sender name should be displayed.
@@ -217,7 +377,13 @@ namespace NexusTeam.Client.ViewModels
         public DateTime? EditedAt
         {
             get => this.editedAt;
-            set => this.SetProperty(ref this.editedAt, value);
+            set
+            {
+                if (this.SetProperty(ref this.editedAt, value))
+                {
+                    this.OnPropertyChanged(nameof(this.IsEdited));
+                }
+            }
         }
 
         /// <summary>
@@ -226,7 +392,14 @@ namespace NexusTeam.Client.ViewModels
         public bool IsDeleted
         {
             get => this.isDeleted;
-            set => this.SetProperty(ref this.isDeleted, value);
+            set
+            {
+                if (this.SetProperty(ref this.isDeleted, value))
+                {
+                    this.OnPropertyChanged(nameof(this.CanQuote));
+                    this.OnPropertyChanged(nameof(this.CanManageOwnMessage));
+                }
+            }
         }
 
         /// <summary>
@@ -419,6 +592,15 @@ namespace NexusTeam.Client.ViewModels
             this.Status = messageDto.Status;
             this.EditedAt = messageDto.EditedAt;
             this.IsDeleted = messageDto.IsDeleted;
+            this.ReplyToId = messageDto.ReplyToId;
+            this.ReplyToSenderId = messageDto.ReplyToSenderId;
+            this.ReplyToSenderName = messageDto.ReplyToSenderName;
+            this.ReplyToContent = messageDto.ReplyToContent;
+            this.IsForwarded = messageDto.IsForwarded
+                || !string.IsNullOrWhiteSpace(messageDto.ForwardedFromSenderName)
+                || !string.IsNullOrWhiteSpace(messageDto.ForwardedFromSenderId);
+            this.ForwardedFromSenderId = messageDto.ForwardedFromSenderId;
+            this.ForwardedFromSenderName = messageDto.ForwardedFromSenderName;
 
             // Update attachments - clear and add new ones to ensure UI updates properly
             var newAttachmentCount = messageDto.Attachments?.Count ?? 0;
@@ -452,6 +634,32 @@ namespace NexusTeam.Client.ViewModels
 
             // Update reactions
             this.Reactions = messageDto.Reactions ?? new Dictionary<string, List<string>>();
+        }
+
+        /// <summary>
+        /// Fills reply preview from a sibling message when the server snapshot is missing.
+        /// </summary>
+        /// <param name="parent">The original message in this chat, if loaded.</param>
+        public void HydrateReplyFrom(MessageViewModel? parent)
+        {
+            if (parent == null || string.IsNullOrEmpty(this.replyToId))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(this.replyToSenderName))
+            {
+                this.ReplyToSenderName = parent.IsCurrentUser
+                    ? "You"
+                    : (parent.SenderName ?? "Message");
+            }
+
+            if (string.IsNullOrWhiteSpace(this.replyToContent))
+            {
+                this.ReplyToContent = parent.IsDeleted
+                    ? "Original message deleted"
+                    : (string.IsNullOrWhiteSpace(parent.Content) ? "Attachment" : parent.Content.Trim());
+            }
         }
 
         /// <summary>

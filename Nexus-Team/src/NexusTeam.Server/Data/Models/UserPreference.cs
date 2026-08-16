@@ -54,6 +54,12 @@ namespace NexusTeam.Server.Data.Models
         public List<string> MutedChats { get; set; } = new List<string>();
 
         /// <summary>
+        /// Gets or sets pinned chat IDs, in display order.
+        /// </summary>
+        [BsonElement("pinnedChats")]
+        public List<string> PinnedChats { get; set; } = new List<string>();
+
+        /// <summary>
         /// Gets or sets the timestamp when the preference was created.
         /// </summary>
         [BsonElement("createdAt")]

@@ -317,6 +317,35 @@ namespace NexusTeam.Client.Services
         }
 
         /// <inheritdoc/>
+        public async Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, CancellationToken cancellationToken = default)
+        {
+            var request = new ForwardMessageRequest
+            {
+                MessageId = messageId,
+            };
+
+            var response = await this.httpClient.PostAsJsonAsync(
+                $"/api/chats/{targetChatId}/messages/forward",
+                request,
+                cancellationToken);
+
+            response.EnsureSuccessStatusCode();
+
+            var messageDto = await response.Content.ReadFromJsonAsync<MessageDto>(cancellationToken: cancellationToken);
+            if (messageDto == null)
+            {
+                throw new InvalidOperationException("Failed to deserialize forwarded message response");
+            }
+
+            this.logger.Information(
+                "Message {MessageId} forwarded to chat {ChatId}",
+                messageId,
+                targetChatId);
+
+            return messageDto;
+        }
+
+        /// <inheritdoc/>
         public async Task EditMessageAsync(string messageId, string content, CancellationToken cancellationToken = default)
         {
             var request = new EditMessageRequest
@@ -786,6 +815,54 @@ namespace NexusTeam.Client.Services
                 this.logger.Error(ex, "Failed to leave chat {ChatId}", chatId);
                 throw;
             }
+        }
+
+        /// <inheritdoc/>
+        public async Task<ChatDto> AddChatParticipantsAsync(
+            string chatId,
+            List<string> userIds,
+            CancellationToken cancellationToken = default)
+        {
+            var request = new AddChatParticipantsRequest
+            {
+                UserIds = userIds ?? new List<string>(),
+            };
+
+            var response = await this.httpClient.PostAsJsonAsync(
+                $"/api/chats/{chatId}/participants",
+                request,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                this.logger.Warning("Add participants failed: {Status} - {Error}", response.StatusCode, error);
+                throw new InvalidOperationException($"Failed to add members: {error}");
+            }
+
+            var chat = await response.Content.ReadFromJsonAsync<ChatDto>(cancellationToken);
+            return chat ?? throw new InvalidOperationException("Add members returned null.");
+        }
+
+        /// <inheritdoc/>
+        public async Task<ChatDto> RemoveChatParticipantAsync(
+            string chatId,
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            var response = await this.httpClient.DeleteAsync(
+                $"/api/chats/{chatId}/participants/{userId}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                this.logger.Warning("Remove participant failed: {Status} - {Error}", response.StatusCode, error);
+                throw new InvalidOperationException($"Failed to remove member: {error}");
+            }
+
+            var chat = await response.Content.ReadFromJsonAsync<ChatDto>(cancellationToken);
+            return chat ?? throw new InvalidOperationException("Remove member returned null.");
         }
 
         /// <inheritdoc/>

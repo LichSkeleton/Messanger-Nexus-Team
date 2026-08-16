@@ -20,6 +20,17 @@ namespace NexusTeam.Server.Services.Abstractions
         Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Forwards an existing message into a target chat as an independent copy.
+        /// The copy keeps its content if the original is later deleted.
+        /// </summary>
+        /// <param name="targetChatId">The chat to send the copy to (including Saved Messages).</param>
+        /// <param name="messageId">The source message ID.</param>
+        /// <param name="userId">The user forwarding the message.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The created forwarded message DTO.</returns>
+        Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, string userId, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Edits an existing message.
         /// </summary>
         /// <param name="messageId">The message ID to edit.</param>

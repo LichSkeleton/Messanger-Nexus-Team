@@ -91,18 +91,16 @@ namespace NexusTeam.Server.Services
 
                 var passwordHash = await this.passwordHasher.HashPasswordAsync(request.Password);
                 var now = this.clock.UtcNow;
-
-                // Set default avatar URL for new users
-                var defaultAvatarUrl = "/api/users/avatar/default";
+                var userId = this.idGenerator.GenerateId();
 
                 var user = new User
                 {
-                    Id = this.idGenerator.GenerateId(),
+                    Id = userId,
                     Username = request.Username,
                     Email = request.Email,
                     PasswordHash = passwordHash,
                     DisplayName = request.DisplayName,
-                    AvatarUrl = defaultAvatarUrl,
+                    AvatarUrl = $"/api/users/avatar/{userId}",
                     Status = UserStatus.Offline,
                     CreatedAt = now,
                     UpdatedAt = now,

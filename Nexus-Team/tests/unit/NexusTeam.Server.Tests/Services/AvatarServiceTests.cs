@@ -96,8 +96,32 @@ namespace NexusTeam.Server.Tests.Services
             await using var stream = await service.GetDefaultAvatarStreamAsync();
             using var image = await Image.LoadAsync(stream);
 
-            Assert.True(image.Width > 0);
-            Assert.True(image.Height > 0);
+            Assert.Equal(200, image.Width);
+            Assert.Equal(200, image.Height);
+        }
+
+        [Fact]
+        public async Task GetAvatarStreamAsync_WhenMissing_ReturnsGeneratedJpeg()
+        {
+            var service = CreateService();
+
+            await using var stream = await service.GetAvatarStreamAsync("missing-" + Guid.NewGuid().ToString("N"));
+            using var image = await Image.LoadAsync(stream!);
+
+            Assert.Equal(200, image.Width);
+            Assert.Equal(200, image.Height);
+        }
+
+        [Fact]
+        public async Task GetAvatarStreamAsync_WhenGroupKeyMissing_ReturnsGeneratedJpeg()
+        {
+            var service = CreateService();
+
+            await using var stream = await service.GetAvatarStreamAsync("chat_" + Guid.NewGuid().ToString("N"));
+            using var image = await Image.LoadAsync(stream!);
+
+            Assert.Equal(200, image.Width);
+            Assert.Equal(200, image.Height);
         }
 
         [Fact]

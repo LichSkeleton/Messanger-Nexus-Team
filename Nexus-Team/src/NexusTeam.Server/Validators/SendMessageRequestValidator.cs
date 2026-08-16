@@ -22,7 +22,7 @@ namespace NexusTeam.Server.Validators
                 .MaximumLength(10000).WithMessage("Message content must not exceed 10000 characters");
 
             this.RuleFor(x => x.ReplyToId)
-                .MaximumLength(26).WithMessage("Reply to ID must not exceed 26 characters")
+                .MaximumLength(50).WithMessage("Reply to ID must not exceed 50 characters")
                 .When(x => !string.IsNullOrEmpty(x.ReplyToId));
         }
     }

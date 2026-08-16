@@ -58,6 +58,142 @@ namespace NexusTeam.Server.Tests.Services
             Assert.Equal(CacheKeys(), fixture.Cache.RemovedKeys);
         }
 
+        [Fact]
+        public async Task SendMessageAsync_WithReplyToId_SnapshotsParentContentAndAuthor()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat("sender");
+            fixture.Messages.ByIds["parent"] = Message(id: "parent", senderId: "alice", content: "original text");
+            fixture.Users.ById["alice"] = new User { Id = "alice", DisplayName = "Alice", Username = "alice" };
+
+            var result = await fixture.Service.SendMessageAsync(
+                Request(replyToId: "parent"), "sender");
+
+            Assert.Equal("parent", result.ReplyToId);
+            Assert.Equal("alice", result.ReplyToSenderId);
+            Assert.Equal("Alice", result.ReplyToSenderName);
+            Assert.Equal("original text", result.ReplyToContent);
+        }
+
+        [Fact]
+        public async Task SendMessageAsync_WhenReplyParentMissing_Throws()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat("sender");
+
+            await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.SendMessageAsync(Request(replyToId: "missing"), "sender"));
+        }
+
+        [Fact]
+        public async Task SendMessageAsync_WhenReplyParentIsInAnotherChat_Throws()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ById = Chat("sender");
+            fixture.Messages.ByIds["parent"] = Message(id: "parent", chatId: "other-chat");
+
+            await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.SendMessageAsync(Request(replyToId: "parent"), "sender"));
+        }
+
+        [Fact]
+        public async Task ForwardMessageAsync_CopiesContentAndAuthorSnapshotIntoTargetChat()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ByIds["chat-1"] = Chat("sender", "alice");
+            fixture.Chats.ByIds["saved-sender"] = new Chat
+            {
+                Id = "saved-sender",
+                Type = ChatType.SavedMessages,
+                ParticipantIds = new List<string> { "sender" },
+            };
+            fixture.Messages.ByIds["message-1"] = Message(senderId: "alice", content: "please keep me");
+            fixture.Attachments.ByMessage["message-1"] = new List<MessageAttachment> { Attachment("a1") };
+            fixture.Users.ById["alice"] = new User { Id = "alice", DisplayName = "Alice" };
+
+            var result = await fixture.Service.ForwardMessageAsync("saved-sender", "message-1", "sender");
+
+            Assert.True(result.IsForwarded);
+            Assert.Equal("please keep me", result.Content);
+            Assert.Equal("alice", result.ForwardedFromSenderId);
+            Assert.Equal("Alice", result.ForwardedFromSenderName);
+            Assert.Equal("saved-sender", result.ChatId);
+            Assert.Equal("sender", result.SenderId);
+            Assert.Single(result.Attachments);
+            Assert.Equal("file.png", result.Attachments[0].FileName);
+            Assert.NotEqual("a1", result.Attachments[0].Id);
+            Assert.Equal("saved-sender", fixture.Chats.Updated?.Id);
+        }
+
+        [Fact]
+        public async Task ForwardMessageAsync_WhenOriginalIsDeletedLater_CopyKeepsContent()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ByIds["chat-1"] = Chat("sender", "alice");
+            fixture.Chats.ByIds["saved-sender"] = new Chat
+            {
+                Id = "saved-sender",
+                ParticipantIds = new List<string> { "sender" },
+            };
+            fixture.Messages.ByIds["message-1"] = Message(senderId: "alice", content: "keep after delete");
+            fixture.Users.ById["alice"] = new User { Id = "alice", DisplayName = "Alice" };
+
+            var forwarded = await fixture.Service.ForwardMessageAsync("saved-sender", "message-1", "sender");
+            fixture.Messages.ByIds["message-1"].IsDeleted = true;
+
+            Assert.Equal("keep after delete", forwarded.Content);
+            Assert.Equal("Alice", forwarded.ForwardedFromSenderName);
+            Assert.True(fixture.Messages.ByIds["message-1"].IsDeleted);
+        }
+
+        [Fact]
+        public async Task ForwardMessageAsync_WhenAlreadyForwarded_KeepsOriginalAuthor()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ByIds["chat-1"] = Chat("sender");
+            fixture.Chats.ByIds["chat-2"] = Chat("sender");
+            var source = Message(senderId: "sender", content: "nested");
+            source.IsForwarded = true;
+            source.ForwardedFromSenderId = "alice";
+            source.ForwardedFromSenderName = "Alice";
+            fixture.Messages.ByIds["message-1"] = source;
+
+            var result = await fixture.Service.ForwardMessageAsync("chat-2", "message-1", "sender");
+
+            Assert.Equal("alice", result.ForwardedFromSenderId);
+            Assert.Equal("Alice", result.ForwardedFromSenderName);
+        }
+
+        [Theory]
+        [InlineData(true, false, "Cannot forward a deleted message")]
+        [InlineData(false, true, "Cannot forward a system message")]
+        public async Task ForwardMessageAsync_WhenDeletedOrSystem_Throws(bool deleted, bool system, string expected)
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ByIds["chat-1"] = Chat("sender");
+            fixture.Chats.ByIds["chat-2"] = Chat("sender");
+            var source = Message(isDeleted: deleted);
+            source.IsSystem = system;
+            fixture.Messages.ByIds["message-1"] = source;
+
+            var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.ForwardMessageAsync("chat-2", "message-1", "sender"));
+
+            Assert.Equal(expected, ex.Message);
+        }
+
+        [Fact]
+        public async Task ForwardMessageAsync_WhenNotParticipantOfTarget_Throws()
+        {
+            var fixture = new Fixture();
+            fixture.Chats.ByIds["chat-1"] = Chat("sender");
+            fixture.Chats.ByIds["chat-2"] = Chat("other");
+            fixture.Messages.ByIds["message-1"] = Message();
+
+            await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.ForwardMessageAsync("chat-2", "message-1", "sender"));
+        }
+
         [Theory]
         [InlineData(null, "user")]
         [InlineData("other", "user")]
@@ -130,6 +266,18 @@ namespace NexusTeam.Server.Tests.Services
 
             await Assert.ThrowsAsync<ValidationException>(() =>
                 fixture.Service.DeleteMessageAsync("message-1", "sender"));
+        }
+
+        [Fact]
+        public async Task EditMessageAsync_WhenSystemMessage_Throws()
+        {
+            var fixture = new Fixture();
+            var message = Message();
+            message.IsSystem = true;
+            fixture.Messages.ById = message;
+
+            await Assert.ThrowsAsync<ValidationException>(() =>
+                fixture.Service.EditMessageAsync("message-1", "new", "sender"));
         }
 
         [Fact]
@@ -264,9 +412,9 @@ namespace NexusTeam.Server.Tests.Services
             Assert.Equal("/api/attachments/download/a1", Assert.Single(result.Attachments).DownloadUrl);
         }
 
-        private static SendMessageRequest Request(List<string>? attachmentIds = null) => new SendMessageRequest
+        private static SendMessageRequest Request(List<string>? attachmentIds = null, string? replyToId = null) => new SendMessageRequest
         {
-            ChatId = "chat-1", Content = "hello", ReplyToId = "parent", AttachmentIds = attachmentIds ?? new List<string>(),
+            ChatId = "chat-1", Content = "hello", ReplyToId = replyToId, AttachmentIds = attachmentIds ?? new List<string>(),
         };
 
         private static Chat Chat(params string[] users) => new Chat
@@ -275,9 +423,14 @@ namespace NexusTeam.Server.Tests.Services
         };
 
         private static Message Message(
-            string senderId = "sender", bool isDeleted = false, MessageStatus status = MessageStatus.Sent) => new Message
+            string id = "message-1",
+            string chatId = "chat-1",
+            string senderId = "sender",
+            string content = "old",
+            bool isDeleted = false,
+            MessageStatus status = MessageStatus.Sent) => new Message
         {
-            Id = "message-1", ChatId = "chat-1", SenderId = senderId, Content = "old", IsDeleted = isDeleted, Status = status,
+            Id = id, ChatId = chatId, SenderId = senderId, Content = content, IsDeleted = isDeleted, Status = status,
         };
 
         private static MessageAttachment Attachment(string id, string? thumbnail = null) => new MessageAttachment
@@ -297,7 +450,7 @@ namespace NexusTeam.Server.Tests.Services
             public Fixture()
             {
                 this.Service = new MessageService(
-                    this.Messages, this.Chats, this.Attachments, this.Cache,
+                    this.Messages, this.Chats, this.Attachments, this.Users, this.Cache,
                     new FixedId(), new FixedClock(this.Now), new LoggerConfiguration().CreateLogger());
             }
 
@@ -306,6 +459,8 @@ namespace NexusTeam.Server.Tests.Services
             public FakeChatRepository Chats { get; } = new FakeChatRepository();
 
             public FakeAttachmentRepository Attachments { get; } = new FakeAttachmentRepository();
+
+            public FakeUserRepository Users { get; } = new FakeUserRepository();
 
             public FakeCache Cache { get; } = new FakeCache();
 
@@ -324,15 +479,31 @@ namespace NexusTeam.Server.Tests.Services
         private sealed class FakeMessageRepository : IMessageRepository
         {
             public Message? ById { get; set; }
+            public Dictionary<string, Message> ByIds { get; } = new Dictionary<string, Message>();
             public Message? Updated { get; set; }
             public string? DeletedId { get; private set; }
             public List<Message> ChatMessages { get; } = new List<Message>();
             public List<Message> SearchResults { get; } = new List<Message>();
             public (string, int, int)? LastChatQuery { get; private set; }
             public (string, string)? LastSearch { get; private set; }
-            public Task<Message?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(this.ById);
+
+            public Task<Message?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
+            {
+                if (this.ByIds.TryGetValue(id, out var found))
+                {
+                    return Task.FromResult<Message?>(found);
+                }
+
+                if (this.ById != null && (this.ById.Id == id || this.ByIds.Count == 0))
+                {
+                    return Task.FromResult<Message?>(this.ById);
+                }
+
+                return Task.FromResult<Message?>(null);
+            }
+
             public Task<IEnumerable<Message>> GetByChatIdAsync(string chatId, int limit = 50, int offset = 0, CancellationToken cancellationToken = default) { this.LastChatQuery = (chatId, limit, offset); return Task.FromResult<IEnumerable<Message>>(this.ChatMessages); }
-            public Task CreateAsync(Message message, CancellationToken cancellationToken = default) { this.ById = message; return Task.CompletedTask; }
+            public Task CreateAsync(Message message, CancellationToken cancellationToken = default) { this.ById = message; this.ByIds[message.Id] = message; return Task.CompletedTask; }
             public Task UpdateAsync(Message message, CancellationToken cancellationToken = default) { this.Updated = message; return Task.CompletedTask; }
             public Task DeleteAsync(string id, CancellationToken cancellationToken = default) { this.DeletedId = id; return Task.CompletedTask; }
             public Task<int> GetMessageCountAsync(string chatId, CancellationToken cancellationToken = default) => Task.FromResult(this.ChatMessages.Count);
@@ -343,8 +514,17 @@ namespace NexusTeam.Server.Tests.Services
         private sealed class FakeChatRepository : IChatRepository
         {
             public Chat? ById { get; set; }
+            public Dictionary<string, Chat> ByIds { get; } = new Dictionary<string, Chat>();
             public Chat? Updated { get; private set; }
-            public Task<Chat?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(this.ById);
+            public Task<Chat?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
+            {
+                if (this.ByIds.TryGetValue(id, out var found))
+                {
+                    return Task.FromResult<Chat?>(found);
+                }
+
+                return Task.FromResult(this.ById);
+            }
             public Task<IEnumerable<Chat>> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Chat>>(Array.Empty<Chat>());
             public Task CreateAsync(Chat chat, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task UpdateAsync(Chat chat, CancellationToken cancellationToken = default) { this.Updated = chat; return Task.CompletedTask; }
@@ -358,13 +538,36 @@ namespace NexusTeam.Server.Tests.Services
         {
             public Dictionary<string, MessageAttachment> ById { get; } = new Dictionary<string, MessageAttachment>();
             public Dictionary<string, List<MessageAttachment>> ByMessage { get; } = new Dictionary<string, List<MessageAttachment>>();
-            public Task AddAsync(MessageAttachment attachment, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task AddAsync(MessageAttachment attachment, CancellationToken cancellationToken = default)
+            {
+                this.ById[attachment.Id] = attachment;
+                if (!this.ByMessage.TryGetValue(attachment.MessageId, out var list))
+                {
+                    list = new List<MessageAttachment>();
+                    this.ByMessage[attachment.MessageId] = list;
+                }
+
+                list.Add(attachment);
+                return Task.CompletedTask;
+            }
             public Task<MessageAttachment?> GetByIdAsync(string attachmentId, CancellationToken cancellationToken = default) => Task.FromResult(this.ById.GetValueOrDefault(attachmentId));
             public Task<List<MessageAttachment>> GetByMessageIdAsync(string messageId, CancellationToken cancellationToken = default) => Task.FromResult(this.ByMessage.GetValueOrDefault(messageId) ?? new List<MessageAttachment>());
             public Task UpdateAsync(MessageAttachment attachment, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task DeleteAsync(string attachmentId, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task<List<MessageAttachment>> GetByMessageIdsAsync(List<string> messageIds, CancellationToken cancellationToken = default) => Task.FromResult(new List<MessageAttachment>());
             public Task<List<string>> DeleteByMessageIdsAsync(List<string> messageIds, CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
+        }
+
+        private sealed class FakeUserRepository : IUserRepository
+        {
+            public Dictionary<string, User> ById { get; } = new Dictionary<string, User>();
+            public Task<User?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(this.ById.GetValueOrDefault(id));
+            public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default) => Task.FromResult<User?>(null);
+            public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) => Task.FromResult<User?>(null);
+            public Task<IEnumerable<User>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<User>>(Array.Empty<User>());
+            public Task CreateAsync(User user, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task UpdateAsync(User user, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         private sealed class FakeCache : ICacheService

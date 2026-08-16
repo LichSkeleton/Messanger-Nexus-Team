@@ -51,6 +51,21 @@ namespace NexusTeam.Server.Tests.Validators
         }
 
         [Fact]
+        public void Validate_WithMoreThanOneHundredPinnedChats_HasPropertyError()
+        {
+            var preferences = CreateValidPreferences();
+            preferences.PinnedChats = new List<string>();
+            for (var index = 0; index < 101; index++)
+            {
+                preferences.PinnedChats.Add($"chat-{index}");
+            }
+
+            var result = this.validator.TestValidate(preferences);
+
+            result.ShouldHaveValidationErrorFor(x => x.PinnedChats);
+        }
+
+        [Fact]
         public void Validate_WithMoreThanOneThousandMutedChats_HasPropertyError()
         {
             var preferences = CreateValidPreferences();

@@ -366,8 +366,11 @@ body {
 }
 .folder-chip.active { color: var(--text); background: var(--accent-soft); border-color: var(--border-accent); }
 .folder-chip.add { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-size: 16px; line-height: 1; }
+.folder-chip.add:disabled { opacity: 0.35; cursor: not-allowed; }
 .folder-hint { margin: 0 0 12px; font-size: 13px; color: var(--text-dim); }
-.folder-pick-list { max-height: 220px; }
+.folder-pick-list { max-height: 280px; margin-top: 8px; }
+.folder-chat-count { margin: 8px 0 12px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+#folderChatSearch { margin-bottom: 0; }
 
 .chat-item-avatar-col {
     display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -386,7 +389,7 @@ body {
     padding: 12px 14px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
 }
 .chat-option:hover { background: var(--surface-strong); border-color: var(--border-accent); }
-.chat-option.danger { color: var(--danger); }
+.chat-option.danger { color: var(--danger); margin-top: 8px; }
 .chat-option.danger:hover { background: rgba(255, 92, 92, 0.12); }
 
 .msg-avatar-col {
@@ -432,15 +435,21 @@ body {
 .chat-item-status.online { color: var(--online); }
 .chat-item-status.offline { color: var(--offline); }
 .chat-item.unread .chat-item-preview { color: var(--text); font-weight: 500; }
-.unread-dot {
-    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-    background: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+.avatar-wrap.is-saved {
+    box-shadow: none;
 }
+.saved-avatar, .avatar-wrap.is-saved .avatar {
+    background: #2AABEE;
+}
+.chat-item-status.saved { color: #2AABEE; font-weight: 600; }
 
 .empty-hint { color: var(--text-dim); text-align: center; padding: 24px; font-size: 14px; }
 
 /* ---- Conversation ---- */
-.conversation { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.conversation {
+    display: flex; flex-direction: column; min-width: 0; min-height: 0;
+    background-color: transparent;
+}
 
 .no-chat { flex: 1; display: flex; align-items: center; justify-content: center; }
 .no-chat-inner { text-align: center; color: var(--text-dim); }
@@ -487,7 +496,7 @@ body {
 .bubble .sender { display: block; font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 3px; }
 .bubble .meta { display: block; font-size: 10px; opacity: .7; margin-top: 4px; text-align: right; }
 .edited-label {
-    display: block; font-size: 11px; font-style: italic; opacity: .75; margin-top: 4px;
+    display: block; font-size: 11px; font-style: italic; opacity: .75; margin: 6px 0 2px;
 }
 .msg-row.me .edited-label { color: rgba(26, 17, 3, 0.75); }
 .deleted-text {
@@ -501,11 +510,9 @@ body {
 .msg-row.editing .bubble { outline: 2px solid var(--accent); }
 
 .msg-actions {
-    display: none; gap: 6px; margin-top: 6px; justify-content: flex-end;
+    display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; flex-wrap: wrap;
 }
-.msg-row.me:hover .msg-actions,
-.msg-row.me:focus-within .msg-actions,
-.msg-row.me.show-actions .msg-actions { display: flex; }
+.msg-actions:empty { display: none; }
 .msg-action {
     border: 1px solid var(--border); background: var(--surface); color: var(--text);
     border-radius: 8px; padding: 3px 8px; font-size: 11px; font-weight: 600; cursor: pointer;
@@ -515,11 +522,100 @@ body {
 .msg-row.me .msg-action { background: rgba(0,0,0,.12); border-color: rgba(0,0,0,.15); color: #1a1103; }
 .msg-row.me .msg-action.danger { color: #7a1010; }
 
-/* On touch devices always show a compact actions affordance for own messages */
-@media (hover: none) {
-    .msg-row.me:not(.deleted) .msg-actions { display: flex; }
+.fwd-label {
+    display: block; font-size: 11px; font-style: italic; opacity: .8; margin-bottom: 4px;
 }
+.msg-row.me .fwd-label { color: rgba(26, 17, 3, 0.8); }
+
+.reply-quote {
+    display: block; width: 100%; text-align: left; margin: 0 0 8px;
+    padding: 6px 8px 6px 10px; border: none; border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; background: rgba(255,255,255,.08); cursor: pointer; color: inherit;
+}
+.msg-row.me .reply-quote { background: rgba(0,0,0,.1); border-left-color: #1a1103; }
+.reply-quote-name { display: block; font-size: 11px; font-weight: 700; }
+.reply-quote-text { display: block; font-size: 12px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.reply-strip {
+    display: flex; align-items: stretch; gap: 10px; padding: 8px 16px;
+    border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-dim);
+}
+.reply-strip-accent { width: 3px; border-radius: 2px; background: var(--accent); flex-shrink: 0; }
+.reply-strip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reply-strip-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+
+.forward-chat-item {
+    display: block; width: 100%; text-align: left; padding: 10px 12px; margin: 0 0 6px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+    color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.forward-chat-item:hover { background: var(--surface-strong); border-color: var(--border-accent); }
+
+.msg-row.reply-flash .bubble { outline: 2px solid var(--accent); }
 .day-divider { text-align: center; font-size: 12px; color: var(--text-dim); margin: 10px 0; }
+.system-msg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 12px 8px;
+}
+.system-msg-pill {
+    background: #ff8c00;
+    color: #1a1103;
+    border: none;
+    border-radius: 14px;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 800;
+    max-width: 80%;
+    text-align: center;
+    line-height: 1.35;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.peer-status.clickable { cursor: pointer; }
+.peer-status.clickable:hover { text-decoration: underline; }
+.members-body { overflow-y: auto; min-height: 0; flex: 1; }
+.members-body > .search-input {
+    height: 40px;
+    padding: 0 14px;
+}
+.members-section-title {
+    font-size: 13px; font-weight: 700; color: var(--text); margin: 4px 0 8px;
+}
+.members-section-title + .members-section-title,
+#addMembersSection .members-section-title { margin-top: 16px; }
+.members-section-list { max-height: 220px; margin-top: 8px; }
+.members-toolbar {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+.members-toolbar .search-input {
+    flex: 1;
+    width: auto;
+    height: 40px;
+    padding: 0 14px;
+    margin: 0;
+}
+.members-toolbar .btn-primary {
+    margin: 0;
+    height: 40px;
+    padding: 0 16px;
+    font-size: 14px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.member-role {
+    font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+    border-radius: 8px; padding: 2px 8px; margin-left: 8px;
+}
+.member-remove {
+    border: none; background: transparent; color: #ff6b6b; font-weight: 700;
+    cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 8px;
+}
+.member-remove:hover { background: rgba(255, 107, 107, 0.15); }
 
 /* Attachments inside bubbles */
 .att { margin-top: 6px; }
@@ -671,6 +767,171 @@ body {
 
 .avatar-edit { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
 .avatar-edit .avatar { width: 64px; height: 64px; border: 2px solid var(--accent); }
+
+.wallpaper-hint { margin: 0 0 10px; font-size: 12px; color: var(--text-dim); }
+.wallpaper-picker {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin: 0 0 16px;
+}
+.wallpaper-swatch {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 0; border: none; background: none; cursor: pointer;
+    font-family: inherit; color: var(--text-dim);
+}
+.wallpaper-preview {
+    display: block; width: 100%; aspect-ratio: 1;
+    border-radius: 12px; border: 2px solid var(--border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.wallpaper-swatch:hover .wallpaper-preview { border-color: var(--border-accent); }
+.wallpaper-swatch.selected .wallpaper-preview {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.wallpaper-swatch:focus-visible { outline: none; }
+.wallpaper-swatch:focus-visible .wallpaper-preview {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.wallpaper-name { font-size: 11px; font-weight: 600; letter-spacing: .2px; }
+.wallpaper-swatch.selected .wallpaper-name { color: var(--text); }
+
+/* Wallpaper recipes — conversation pane + settings swatches */
+body[data-wallpaper="default"] .conversation,
+.wallpaper-preview--default {
+    background:
+        radial-gradient(1100px 700px at 12% -10%, var(--bg-glow-1) 0%, transparent 55%),
+        radial-gradient(900px 600px at 115% 5%, var(--bg-glow-2) 0%, transparent 50%),
+        var(--bg);
+}
+
+body[data-wallpaper="ember"] .conversation,
+.wallpaper-preview--ember {
+    background-color: #1a0e04;
+    background-image:
+        radial-gradient(ellipse 90% 55% at 8% -10%, rgba(255, 140, 0, 0.42), transparent 58%),
+        radial-gradient(ellipse 70% 50% at 100% 110%, rgba(180, 40, 0, 0.32), transparent 52%),
+        repeating-linear-gradient(-28deg, rgba(255, 140, 0, 0.10) 0 9px, transparent 9px 24px),
+        repeating-linear-gradient(28deg, rgba(255, 90, 0, 0.06) 0 7px, transparent 7px 20px);
+}
+
+body[data-wallpaper="ocean"] .conversation,
+.wallpaper-preview--ocean {
+    background-color: #06141c;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 0% 0%, rgba(56, 189, 248, 0.28), transparent 55%),
+        radial-gradient(ellipse 70% 45% at 100% 100%, rgba(14, 116, 144, 0.40), transparent 50%),
+        repeating-linear-gradient(180deg, transparent 0 18px, rgba(56, 189, 248, 0.07) 18px 20px),
+        repeating-linear-gradient(12deg, rgba(34, 211, 238, 0.08) 0 10px, transparent 10px 28px);
+}
+
+body[data-wallpaper="forest"] .conversation,
+.wallpaper-preview--forest {
+    background-color: #0a140c;
+    background-image:
+        radial-gradient(ellipse 75% 50% at 15% 0%, rgba(74, 222, 128, 0.22), transparent 55%),
+        radial-gradient(ellipse 65% 45% at 90% 100%, rgba(22, 101, 52, 0.45), transparent 50%),
+        repeating-linear-gradient(45deg, rgba(74, 222, 128, 0.08) 0 12px, transparent 12px 28px),
+        repeating-linear-gradient(-45deg, rgba(34, 197, 94, 0.05) 0 8px, transparent 8px 22px);
+}
+
+body[data-wallpaper="midnight"] .conversation,
+.wallpaper-preview--midnight {
+    background-color: #0c0818;
+    background-image:
+        radial-gradient(ellipse 70% 50% at 10% 0%, rgba(139, 92, 246, 0.32), transparent 55%),
+        radial-gradient(ellipse 60% 45% at 100% 100%, rgba(67, 56, 202, 0.38), transparent 50%),
+        radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.18) 0 1px, transparent 2px),
+        radial-gradient(circle at 70% 60%, rgba(196, 181, 253, 0.22) 0 1.2px, transparent 2.4px),
+        repeating-linear-gradient(135deg, rgba(167, 139, 250, 0.07) 0 8px, transparent 8px 22px);
+}
+
+body[data-wallpaper="rose"] .conversation,
+.wallpaper-preview--rose {
+    background-color: #1a0810;
+    background-image:
+        radial-gradient(ellipse 80% 55% at 12% -5%, rgba(244, 114, 182, 0.34), transparent 55%),
+        radial-gradient(ellipse 65% 45% at 95% 105%, rgba(190, 24, 93, 0.36), transparent 50%),
+        repeating-linear-gradient(22deg, rgba(251, 113, 133, 0.10) 0 10px, transparent 10px 26px),
+        repeating-linear-gradient(-18deg, rgba(244, 114, 182, 0.06) 0 7px, transparent 7px 20px);
+}
+
+body[data-wallpaper="aurora"] .conversation,
+.wallpaper-preview--aurora {
+    background-color: #061218;
+    background-image:
+        radial-gradient(ellipse 70% 45% at 0% 20%, rgba(45, 212, 191, 0.30), transparent 55%),
+        radial-gradient(ellipse 65% 50% at 100% 0%, rgba(168, 85, 247, 0.28), transparent 50%),
+        radial-gradient(ellipse 60% 40% at 50% 110%, rgba(56, 189, 248, 0.22), transparent 50%),
+        repeating-linear-gradient(105deg, rgba(45, 212, 191, 0.08) 0 14px, transparent 14px 32px);
+}
+
+body.theme-light[data-wallpaper="ember"] .conversation,
+body.theme-light .wallpaper-preview--ember {
+    background-color: #fff4e8;
+    background-image:
+        radial-gradient(ellipse 90% 55% at 8% -10%, rgba(255, 140, 0, 0.28), transparent 58%),
+        radial-gradient(ellipse 70% 50% at 100% 110%, rgba(255, 170, 80, 0.35), transparent 52%),
+        repeating-linear-gradient(-28deg, rgba(255, 140, 0, 0.12) 0 9px, transparent 9px 24px),
+        repeating-linear-gradient(28deg, rgba(255, 120, 40, 0.08) 0 7px, transparent 7px 20px);
+}
+
+body.theme-light[data-wallpaper="ocean"] .conversation,
+body.theme-light .wallpaper-preview--ocean {
+    background-color: #e8f6fb;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 0% 0%, rgba(56, 189, 248, 0.28), transparent 55%),
+        radial-gradient(ellipse 70% 45% at 100% 100%, rgba(125, 211, 252, 0.40), transparent 50%),
+        repeating-linear-gradient(180deg, transparent 0 18px, rgba(14, 165, 233, 0.10) 18px 20px),
+        repeating-linear-gradient(12deg, rgba(34, 211, 238, 0.12) 0 10px, transparent 10px 28px);
+}
+
+body.theme-light[data-wallpaper="forest"] .conversation,
+body.theme-light .wallpaper-preview--forest {
+    background-color: #eef8f0;
+    background-image:
+        radial-gradient(ellipse 75% 50% at 15% 0%, rgba(74, 222, 128, 0.28), transparent 55%),
+        radial-gradient(ellipse 65% 45% at 90% 100%, rgba(134, 239, 172, 0.40), transparent 50%),
+        repeating-linear-gradient(45deg, rgba(22, 163, 74, 0.10) 0 12px, transparent 12px 28px),
+        repeating-linear-gradient(-45deg, rgba(34, 197, 94, 0.07) 0 8px, transparent 8px 22px);
+}
+
+body.theme-light[data-wallpaper="midnight"] .conversation,
+body.theme-light .wallpaper-preview--midnight {
+    background-color: #f3f0fb;
+    background-image:
+        radial-gradient(ellipse 70% 50% at 10% 0%, rgba(167, 139, 250, 0.32), transparent 55%),
+        radial-gradient(ellipse 60% 45% at 100% 100%, rgba(196, 181, 253, 0.38), transparent 50%),
+        radial-gradient(circle at 20% 30%, rgba(109, 40, 217, 0.18) 0 1px, transparent 2px),
+        repeating-linear-gradient(135deg, rgba(139, 92, 246, 0.10) 0 8px, transparent 8px 22px);
+}
+
+body.theme-light[data-wallpaper="rose"] .conversation,
+body.theme-light .wallpaper-preview--rose {
+    background-color: #fdf2f6;
+    background-image:
+        radial-gradient(ellipse 80% 55% at 12% -5%, rgba(244, 114, 182, 0.28), transparent 55%),
+        radial-gradient(ellipse 65% 45% at 95% 105%, rgba(251, 113, 133, 0.32), transparent 50%),
+        repeating-linear-gradient(22deg, rgba(244, 114, 182, 0.12) 0 10px, transparent 10px 26px),
+        repeating-linear-gradient(-18deg, rgba(251, 113, 133, 0.08) 0 7px, transparent 7px 20px);
+}
+
+body.theme-light[data-wallpaper="aurora"] .conversation,
+body.theme-light .wallpaper-preview--aurora {
+    background-color: #eefaf8;
+    background-image:
+        radial-gradient(ellipse 70% 45% at 0% 20%, rgba(45, 212, 191, 0.28), transparent 55%),
+        radial-gradient(ellipse 65% 50% at 100% 0%, rgba(192, 132, 252, 0.26), transparent 50%),
+        radial-gradient(ellipse 60% 40% at 50% 110%, rgba(125, 211, 252, 0.24), transparent 50%),
+        repeating-linear-gradient(105deg, rgba(45, 212, 191, 0.12) 0 14px, transparent 14px 32px);
+}
+
+@media (max-width: 420px) {
+    .wallpaper-picker { grid-template-columns: repeat(3, 1fr); }
+}
 
 /* Image generation */
 .gen-preview {
