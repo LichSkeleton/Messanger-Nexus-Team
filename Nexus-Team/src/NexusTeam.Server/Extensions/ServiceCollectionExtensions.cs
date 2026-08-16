@@ -37,6 +37,7 @@ namespace NexusTeam.Server.Extensions
             services.Configure<BcryptOptions>(configuration.GetSection(BcryptOptions.SectionName));
             services.Configure<RateLimitOptions>(configuration.GetSection(RateLimitOptions.SectionName));
             services.Configure<CorsOptions>(configuration.GetSection(CorsOptions.SectionName));
+            services.Configure<DeviceLockOptions>(configuration.GetSection(DeviceLockOptions.SectionName));
 
             services.AddSingleton<IValidateOptions<OracleOptions>, OracleOptionsValidator>();
             services.AddSingleton<IValidateOptions<MongoOptions>, MongoOptionsValidator>();
@@ -45,6 +46,7 @@ namespace NexusTeam.Server.Extensions
             services.AddSingleton<IValidateOptions<BcryptOptions>, BcryptOptionsValidator>();
             services.AddSingleton<IValidateOptions<RateLimitOptions>, RateLimitOptionsValidator>();
             services.AddSingleton<IValidateOptions<CorsOptions>, CorsOptionsValidator>();
+            services.AddSingleton<IValidateOptions<DeviceLockOptions>, DeviceLockOptionsValidator>();
 
             return services;
         }
@@ -64,6 +66,7 @@ namespace NexusTeam.Server.Extensions
             services.AddScoped<IMessageAttachmentRepository, Data.Repositories.MongoImpl.MongoMessageAttachmentRepository>();
             services.AddScoped<IUserPreferenceRepository, Data.Repositories.MongoImpl.MongoUserPreferenceRepository>();
             services.AddScoped<IGeneratedImageRepository, Data.Repositories.MongoImpl.MongoGeneratedImageRepository>();
+            services.AddScoped<IUserDeviceRepository, Data.Repositories.MongoImpl.MongoUserDeviceRepository>();
 
             return services;
         }
@@ -115,6 +118,7 @@ namespace NexusTeam.Server.Extensions
             services.AddSingleton<ISessionService, SessionService>();
             services.AddScoped<IGeneratedImageService, GeneratedImageService>();
             services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
+            services.AddScoped<IUserDeviceService, UserDeviceService>();
             services.AddHostedService<PresenceTrackingService>();
 
             return services;

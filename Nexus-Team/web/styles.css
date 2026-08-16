@@ -767,6 +767,20 @@ body {
 
 .avatar-edit { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
 .avatar-edit .avatar { width: 64px; height: 64px; border: 2px solid var(--accent); }
+.security-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.security-actions button { flex: 1; }
+.security-modal .field-input { margin-bottom: 12px; }
+#securityModal { z-index: 1100; }
+
+/* Device lock */
+.lock-view { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: var(--bg); }
+.lock-card { width: min(380px, 94vw); padding: 36px; text-align: center; border-radius: 22px; border: 1px solid var(--border-accent); }
+.lock-avatar { width: 82px; height: 82px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent); }
+.lock-username { margin-top: 10px; color: var(--text-dim); font-weight: 600; }
+.lock-card h1 { margin: 22px 0 4px; font-size: 22px; }
+.lock-subtitle { margin: 0 0 20px; color: var(--text-dim); }
+.pin-input { width: 190px; padding: 14px; border-radius: 12px; border: 1px solid var(--border-accent); background: var(--input-bg); color: var(--text); text-align: center; font-size: 28px; letter-spacing: 18px; text-indent: 18px; }
+.pin-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .wallpaper-hint { margin: 0 0 10px; font-size: 12px; color: var(--text-dim); }
 .wallpaper-picker {

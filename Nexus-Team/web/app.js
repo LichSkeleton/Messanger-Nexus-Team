@@ -11,8 +11,8 @@
     // ---- Config ---------------------------------------------------------------
     var API = "/api";
     var WS_PATH = "/ws";
-    var TOKEN_KEY = "nexus_token";
     var USER_KEY = "nexus_user";
+    var DEVICE_KEY = "nexus_device_id";
     var THEME_KEY = "nexus_theme";
     var WALLPAPER_KEY = "nexus_wallpaper";
     var WALLPAPERS = ["default", "ember", "ocean", "forest", "midnight", "rose", "aurora"];
@@ -57,9 +57,29 @@
         "✅ ❌ ❓ ❗ ❕ ❔ ‼️ ⁉️ 💯 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🟤 🔶 🔷").split(" ");
 
     // ---- State ----------------------------------------------------------------
+    function getOrCreateDeviceId() {
+        var existing = localStorage.getItem(DEVICE_KEY);
+        if (existing) return existing;
+        var id = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() :
+            "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+                var r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16);
+            });
+        localStorage.setItem(DEVICE_KEY, id);
+        return id;
+    }
+
+    function deviceName() {
+        var platform = navigator.userAgentData && navigator.userAgentData.platform || navigator.platform || "Unknown OS";
+        var browser = /Edg\//.test(navigator.userAgent) ? "Edge" : /Firefox\//.test(navigator.userAgent) ? "Firefox" : /Chrome\//.test(navigator.userAgent) ? "Chrome" : /Safari\//.test(navigator.userAgent) ? "Safari" : "Browser";
+        return browser + " on " + platform;
+    }
+
     var state = {
-        token: localStorage.getItem(TOKEN_KEY) || null,
+        token: null,
         me: JSON.parse(localStorage.getItem(USER_KEY) || "null"),
+        deviceId: getOrCreateDeviceId(), locked: false, lockStatus: null,
+        tabId: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + Math.random(),
+        securityMode: "enable", lockTimer: null,
         chats: [], activeChatId: null, socket: null, heartbeat: null,
         seenMessageIds: {}, messagesById: {}, peersById: {},
         lastPreviews: {}, // chatId -> truncated preview text
@@ -227,7 +247,6 @@
             else { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
         }
         return fetch(API + path, opts).then(function (res) {
-            if (res.status === 401) { logout(); throw new Error("Session expired. Please sign in again."); }
             if (res.status === 204 || res.status === 205) {
                 if (!res.ok) throw new Error("Request failed (" + res.status + ")");
                 return null;
@@ -235,7 +254,18 @@
             var ct = (res.headers.get("content-type") || "").toLowerCase();
             var parse = ct.indexOf("json") !== -1 ? res.json() : res.text();
             return parse.then(function (data) {
-                if (!res.ok) throw new Error(formatApiError(data, res.status));
+                if (res.status === 423 || data && data.code === "DEVICE_LOCKED") {
+                    showLocked();
+                } else if (data && data.code === "DEVICE_SECURITY_UNAVAILABLE") {
+                    showSecurityUnavailable();
+                } else if (res.status === 401 && path !== "/device-lock/unlock" && path !== "/device-lock/enable" && path !== "/device-lock/disable" && path !== "/device-lock") {
+                    logout();
+                }
+                if (!res.ok) {
+                    var error = new Error(formatApiError(data, res.status));
+                    error.status = res.status; error.data = data;
+                    throw error;
+                }
                 return data;
             });
         });
@@ -246,13 +276,18 @@
     // ---- Auth -----------------------------------------------------------------
     function saveSession(token, user) {
         state.token = token; state.me = user;
-        localStorage.setItem(TOKEN_KEY, token);
         localStorage.setItem(USER_KEY, JSON.stringify(user));
+        localStorage.removeItem("nexus_token");
     }
 
     function login(identifier, password) {
-        return api("POST", "/auth/login", { usernameOrEmail: identifier, password: password })
-            .then(function (res) { saveSession(res.accessToken, res.user); enterApp(); });
+        return api("POST", "/auth/login", {
+            usernameOrEmail: identifier, password: password,
+            deviceId: state.deviceId, deviceName: deviceName()
+        }).then(function (res) {
+            saveSession(res.accessToken, res.user);
+            return bootstrapDevice();
+        });
     }
 
     function register(displayName, username, email, password) {
@@ -264,17 +299,134 @@
     }
 
     function logout() {
-        try { if (state.token) api("POST", "/auth/logout"); } catch (e) { /* ignore */ }
+        if (state.token) {
+            fetch(API + "/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + state.token } }).catch(function () { });
+        }
         if (state.socket) { try { state.socket.close(); } catch (e) { /* ignore */ } }
         clearInterval(state.heartbeat);
         state.token = null; state.me = null; state.chats = []; state.activeChatId = null;
-        localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY);
+        localStorage.removeItem("nexus_token"); localStorage.removeItem(USER_KEY);
         document.body.classList.remove("chat-open");
-        hide($("chatView")); show($("authView")); document.body.classList.add("auth-mode");
+        hide($("lockView")); hide($("chatView")); show($("authView")); document.body.classList.add("auth-mode");
+    }
+
+    function restoreSession() {
+        return fetch(API + "/auth/refresh", { method: "POST" }).then(function (res) {
+            if (!res.ok) throw new Error("No session");
+            return res.json();
+        }).then(function (res) {
+            saveSession(res.accessToken, res.user);
+            return bootstrapDevice().catch(function (error) {
+                showSecurityUnavailable();
+                error.deviceBootstrapFailed = true;
+                throw error;
+            });
+        }).catch(function (error) {
+            if (error && error.deviceBootstrapFailed) return;
+            state.token = null;
+            localStorage.removeItem(USER_KEY);
+            hide($("chatView")); hide($("lockView")); show($("authView"));
+        });
+    }
+
+    function bootstrapDevice() {
+        return api("GET", "/device-lock/status").then(function (status) {
+            state.lockStatus = status;
+            if (status.requiresPinReset) {
+                showLocked();
+                openSecurityModal("enable");
+                $("securityModalTitle").textContent = "Set a new PIN";
+            } else if (status.isLocked) showLocked();
+            else enterApp();
+        });
+    }
+
+    // ---- Device lock ---------------------------------------------------------
+    var lockChannel = "BroadcastChannel" in window ? new BroadcastChannel("nexus-device-lock") : null;
+
+    function clearSensitiveState() {
+        state.chats = []; state.activeChatId = null; state.messagesById = {}; state.peersById = {};
+        state.lastPreviews = {}; state.unread = {}; state.users = [];
+        ["chatList", "messages"].forEach(function (id) { var el = $(id); if (el) el.replaceChildren(); });
+        hide($("activeChat"));
+    }
+
+    function showLocked() {
+        if (!state.me) { logout(); return; }
+        state.locked = true;
+        clearTimeout(state.lockTimer);
+        if (state.socket) { try { state.socket.close(); } catch (e) { /* ignore */ } }
+        clearInterval(state.heartbeat);
+        clearSensitiveState();
+        hide($("settingsModal")); hide($("securityModal")); hide($("authView")); hide($("chatView"));
+        $("lockUsername").textContent = state.me.username || state.me.displayName || "";
+        attachAvatar($("lockAvatar"), state.me.id || "default", state.me.displayName || state.me.username);
+        $("unlockPin").disabled = false; $("forgotPinBtn").disabled = false;
+        $("unlockPin").value = ""; $("unlockError").textContent = "";
+        show($("lockView"));
+        setTimeout(function () { $("unlockPin").focus(); }, 0);
+        if (lockChannel) lockChannel.postMessage({ type: "locked" });
+    }
+
+    function showSecurityUnavailable() {
+        showLocked();
+        $("unlockPin").disabled = true;
+        $("forgotPinBtn").disabled = true;
+        $("unlockError").textContent = "Security service is unavailable. Your messages remain protected. Try again when the connection returns.";
+    }
+
+    function unlockDevice(pin) {
+        $("unlockError").textContent = "";
+        return api("POST", "/device-lock/unlock", { pin: pin }).then(function () {
+            state.locked = false;
+            hide($("lockView"));
+            if (lockChannel) lockChannel.postMessage({ type: "unlocked" });
+            enterApp();
+        }).catch(function (err) {
+            $("unlockPin").value = "";
+            var remaining = err.data && err.data.remainingAttempts;
+            $("unlockError").textContent = err.message + (remaining > 0 ? " (" + remaining + " attempts left)" : "");
+            if (err.data && err.data.code === "PIN_RESET_REQUIRED") logout();
+        });
+    }
+
+    function reportActivity() {
+        if (!state.token || !state.lockStatus || !state.lockStatus.enabled || state.locked) return Promise.resolve();
+        clearTimeout(state.lockTimer);
+        if (document.hidden && !state.callActive && state.socket) {
+            try { state.socket.close(); } catch (e) { /* ignore */ }
+        }
+        return api("POST", "/device-lock/activity", {
+            tabId: state.tabId,
+            isVisible: !document.hidden,
+            hasActiveCall: !!state.callActive
+        }).then(function () {
+            if (document.hidden && !state.callActive) {
+                state.lockTimer = setTimeout(checkLockStatus, state.lockStatus.timeoutSeconds * 1000);
+            }
+        }).catch(function () { });
+    }
+
+    function checkLockStatus() {
+        if (!state.token || !state.lockStatus || !state.lockStatus.enabled) return Promise.resolve();
+        return api("GET", "/device-lock/status").then(function (status) {
+            state.lockStatus = status;
+            if (status.isLocked) showLocked();
+        }).catch(function () { });
+    }
+
+    if (lockChannel) {
+        lockChannel.onmessage = function (event) {
+            if (event.data && event.data.type === "locked" && !state.locked) showLocked();
+            if (event.data && event.data.type === "unlocked" && state.locked) {
+                state.locked = false; hide($("lockView")); enterApp();
+            }
+        };
     }
 
     // ---- Bootstrap ------------------------------------------------------------
     function enterApp() {
+        state.locked = false;
         document.body.classList.remove("auth-mode");
         hide($("authView")); show($("chatView"));
         $("myName").textContent = state.me ? state.me.displayName : "";
@@ -287,6 +439,7 @@
         loadFolders();
         loadPreferences();
         loadMyStatus();
+        reportActivity();
     }
 
     // ---- Presence / status ----------------------------------------------------
@@ -2049,7 +2202,7 @@
         socket.onclose = function () {
             clearInterval(state.heartbeat);
             state.socket = null;
-            if (state.token) setTimeout(connectSocket, 2000);
+            if (state.token && !state.locked && !document.hidden) setTimeout(connectSocket, 2000);
         };
         socket.onerror = function () { try { socket.close(); } catch (e) { /* ignore */ } };
     }
@@ -2379,6 +2532,68 @@
         $("prefSound").checked = state.prefs.soundEnabled;
         $("prefTheme").value = state.prefs.theme || "dark";
         applyWallpaper(state.prefs.wallpaper || localStorage.getItem(WALLPAPER_KEY) || "default");
+        loadDeviceSettings();
+    }
+
+    function renderDeviceSettings(status) {
+        state.lockStatus = status;
+        $("autoLockEnabled").checked = !!status.enabled;
+        $("autoLockTimeout").value = String(status.timeoutSeconds || 60);
+        $("autoLockControls").classList.toggle("hidden", !status.enabled);
+    }
+
+    function loadDeviceSettings() {
+        api("GET", "/device-lock/status").then(renderDeviceSettings).catch(function (e) { toast(e.message); });
+    }
+
+    function openSecurityModal(mode) {
+        state.securityMode = mode;
+        $("securityError").textContent = "";
+        $("securityPassword").value = ""; $("currentPin").value = "";
+        $("newPin").value = ""; $("confirmPin").value = "";
+        $("securityPasswordGroup").classList.toggle("hidden", mode !== "enable");
+        $("currentPinGroup").classList.toggle("hidden", mode === "enable");
+        $("newPinGroup").classList.toggle("hidden", mode === "timeout" || mode === "disable");
+        $("securityModalTitle").textContent = mode === "enable" ? "Enable auto-lock" : mode === "change" ? "Change PIN" : mode === "disable" ? "Disable auto-lock" : "Update auto-lock";
+        show($("securityModal"));
+    }
+
+    function saveSecurity() {
+        var mode = state.securityMode;
+        var wasPinReset = !!(state.lockStatus && state.lockStatus.requiresPinReset);
+        var request;
+        var operation;
+        if (mode === "enable") {
+            request = {
+                accountPassword: $("securityPassword").value,
+                pin: $("newPin").value,
+                confirmPin: $("confirmPin").value,
+                timeoutSeconds: Number($("autoLockTimeout").value || 60)
+            };
+            operation = api("POST", "/device-lock/enable", request);
+        } else if (mode === "disable") {
+            operation = api("POST", "/device-lock/disable", { pin: $("currentPin").value });
+        } else {
+            request = {
+                currentPin: $("currentPin").value,
+                timeoutSeconds: Number($("autoLockTimeout").value || 60),
+                newPin: mode === "change" ? $("newPin").value : null,
+                confirmNewPin: mode === "change" ? $("confirmPin").value : null
+            };
+            operation = api("PUT", "/device-lock", request);
+        }
+
+        operation.then(function () {
+            hide($("securityModal"));
+            if (wasPinReset) {
+                state.locked = false;
+                hide($("lockView"));
+                enterApp();
+            } else {
+                loadDeviceSettings();
+            }
+            toast(mode === "disable" ? "Auto-lock disabled" : "Security settings saved");
+        }).catch(function (e) { $("securityError").textContent = e.message; });
     }
 
     function savePreferences() {
@@ -2605,6 +2820,16 @@
         });
         document.addEventListener("visibilitychange", function () {
             if (!document.hidden) unlockAudio();
+            if (document.hidden) reportActivity();
+            else checkLockStatus().then(function () { if (!state.locked) reportActivity().then(connectSocket); });
+        });
+        window.addEventListener("pagehide", function () {
+            if (!state.token || !state.lockStatus || !state.lockStatus.enabled) return;
+            fetch(API + "/device-lock/activity", {
+                method: "POST", keepalive: true,
+                headers: { "Content-Type": "application/json", Authorization: "Bearer " + state.token },
+                body: JSON.stringify({ tabId: state.tabId, isVisible: false, hasActiveCall: false })
+            }).catch(function () { });
         });
 
         // Auth
@@ -2765,6 +2990,36 @@
         $("saveProfileBtn").addEventListener("click", saveProfile);
         $("uploadAvatarBtn").addEventListener("click", function () { $("avatarInput").click(); });
         $("avatarInput").addEventListener("change", function (e) { if (e.target.files[0]) uploadAvatar(e.target.files[0]); e.target.value = ""; });
+        $("autoLockEnabled").addEventListener("change", function (e) {
+            if (e.target.checked && !(state.lockStatus && state.lockStatus.enabled)) {
+                openSecurityModal("enable");
+            } else if (!e.target.checked && state.lockStatus && state.lockStatus.enabled) {
+                e.target.checked = true;
+                openSecurityModal("disable");
+            }
+        });
+        $("saveLockSettingsBtn").addEventListener("click", function () { openSecurityModal("timeout"); });
+        $("changePinBtn").addEventListener("click", function () { openSecurityModal("change"); });
+        $("lockNowBtn").addEventListener("click", function () {
+            api("POST", "/device-lock/lock").then(showLocked).catch(function (e) { toast(e.message); });
+        });
+        $("closeSecurityModal").addEventListener("click", function () {
+            if (state.lockStatus && state.lockStatus.requiresPinReset) return;
+            hide($("securityModal")); renderDeviceSettings(state.lockStatus);
+        });
+        $("saveSecurityBtn").addEventListener("click", saveSecurity);
+
+        $("unlockPin").addEventListener("input", function (e) {
+            e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4);
+            if (e.target.value.length === 4) unlockDevice(e.target.value);
+        });
+        $("unlockForm").addEventListener("submit", function (e) {
+            e.preventDefault();
+            if ($("unlockPin").value.length === 4) unlockDevice($("unlockPin").value);
+        });
+        $("forgotPinBtn").addEventListener("click", function () {
+            api("POST", "/device-lock/forgot").catch(function () { }).then(logout);
+        });
 
         // Image gen modal
         $("imageGenBtn").addEventListener("click", openImageGen);
@@ -2896,7 +3151,8 @@
             }
         });
 
-        if (state.token && state.me) enterApp();
+        localStorage.removeItem("nexus_token");
+        restoreSession();
     }
 
     document.addEventListener("DOMContentLoaded", init);

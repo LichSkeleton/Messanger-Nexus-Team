@@ -16,6 +16,21 @@
     <link rel="stylesheet" href="styles.css?v=preview10" />
 </head>
 <body class="auth-mode">
+    <!-- ===================== DEVICE LOCK ===================== -->
+    <main id="lockView" class="lock-view hidden" aria-live="polite">
+        <div class="lock-card glass">
+            <img id="lockAvatar" class="lock-avatar" alt="" />
+            <div id="lockUsername" class="lock-username"></div>
+            <h1>Enter your PIN</h1>
+            <p class="lock-subtitle">This device is locked.</p>
+            <form id="unlockForm">
+                <input id="unlockPin" class="pin-input" type="password" inputmode="numeric"
+                       pattern="[0-9]{4}" maxlength="4" autocomplete="off" aria-label="Four-digit PIN" />
+                <p id="unlockError" class="auth-error" role="alert"></p>
+            </form>
+            <button id="forgotPinBtn" class="link-btn" type="button">Forgot PIN?</button>
+        </div>
+    </main>
     <!-- ===================== AUTH (login / register) ===================== -->
     <main id="authView" class="auth-view">
         <div class="auth-card glass">
@@ -281,7 +296,55 @@
                         <span class="wallpaper-name">Aurora</span>
                     </button>
                 </div>
+
+                <div class="setting-section-title">Security</div>
+                <div class="setting-row">
+                    <div><div class="s-label">Auto-lock this device</div><div class="s-sub">Require your PIN after leaving NexusTeam</div></div>
+                    <label class="switch"><input type="checkbox" id="autoLockEnabled" /><span class="track"></span><span class="thumb"></span></label>
+                </div>
+                <div id="autoLockControls" class="hidden">
+                    <div class="setting-row">
+                        <div><div class="s-label">Lock after</div><div class="s-sub">Time when all NexusTeam tabs are hidden</div></div>
+                        <select id="autoLockTimeout" class="select-input">
+                            <option value="30">30 seconds</option>
+                            <option value="60">1 minute</option>
+                            <option value="300">5 minutes</option>
+                            <option value="900">15 minutes</option>
+                            <option value="1800">30 minutes</option>
+                        </select>
+                    </div>
+                    <div class="security-actions">
+                        <button id="saveLockSettingsBtn" class="btn-secondary" type="button">Save timeout</button>
+                        <button id="changePinBtn" class="btn-secondary" type="button">Change PIN</button>
+                        <button id="lockNowBtn" class="btn-secondary" type="button">Lock now</button>
+                    </div>
+                </div>
             </div>
+        </div>
+    </div>
+
+    <div id="securityModal" class="modal-overlay hidden">
+        <div class="modal glass security-modal">
+            <header class="modal-header">
+                <h2 id="securityModalTitle">Enable auto-lock</h2>
+                <button id="closeSecurityModal" class="icon-btn" aria-label="Close">×</button>
+            </header>
+            <div id="securityPasswordGroup">
+                <label class="field-label" for="securityPassword">Account password</label>
+                <input id="securityPassword" class="field-input" type="password" autocomplete="current-password" />
+            </div>
+            <div id="currentPinGroup" class="hidden">
+                <label class="field-label" for="currentPin">Current PIN</label>
+                <input id="currentPin" class="field-input" type="password" inputmode="numeric" maxlength="4" />
+            </div>
+            <div id="newPinGroup">
+                <label class="field-label" for="newPin">New PIN</label>
+                <input id="newPin" class="field-input" type="password" inputmode="numeric" maxlength="4" />
+                <label class="field-label" for="confirmPin">Confirm PIN</label>
+                <input id="confirmPin" class="field-input" type="password" inputmode="numeric" maxlength="4" />
+            </div>
+            <p id="securityError" class="auth-error" role="alert"></p>
+            <button id="saveSecurityBtn" class="btn-primary" type="button">Save</button>
         </div>
     </div>
 
