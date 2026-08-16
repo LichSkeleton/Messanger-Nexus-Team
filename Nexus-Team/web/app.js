@@ -1210,7 +1210,7 @@
 
         if (m.isDeleted) {
             html += '<span class="deleted-text">Message was deleted</span>';
-            html += '<span class="meta">' + formatTime(m.createdAt) + '</span>';
+            html += '<span class="bubble-foot"><span class="meta">' + formatTime(m.createdAt) + '</span></span>';
             return html;
         }
 
@@ -1254,24 +1254,43 @@
             html += renderMessageText(content, cls);
         }
 
+        html += '<span class="bubble-foot">';
         if (m.editedAt) html += '<span class="edited-label">Edited</span>';
-
-        html += '<div class="msg-actions">';
-        if (canQuoteMessage(m)) {
-            html += '<button type="button" class="msg-action" data-action="reply" title="Reply">Reply</button>';
-            html += '<button type="button" class="msg-action" data-action="forward" title="Forward">Forward</button>';
-        }
-        if (canEditMessage(m)) {
-            html += '<button type="button" class="msg-action" data-action="edit" title="Edit">Edit</button>';
-        }
-        if (canDeleteMessage(m)) {
-            html += '<button type="button" class="msg-action danger" data-action="delete" title="Delete">Delete</button>';
-        }
-        html += '</div>';
-
         html += '<span class="meta">' + formatTime(m.createdAt) + '</span>';
+        html += '</span>';
 
         return html;
+    }
+
+    function buildMsgActionsHtml(m) {
+        if (!m || m.isDeleted) return "";
+        var parts = [];
+        if (canQuoteMessage(m)) {
+            parts.push('<button type="button" class="msg-action" data-action="reply" title="Reply" aria-label="Reply">↩</button>');
+            parts.push('<button type="button" class="msg-action" data-action="forward" title="Forward" aria-label="Forward">↗</button>');
+        }
+        if (canEditMessage(m)) {
+            parts.push('<button type="button" class="msg-action" data-action="edit" title="Edit" aria-label="Edit">✎</button>');
+        }
+        if (canDeleteMessage(m)) {
+            parts.push('<button type="button" class="msg-action danger" data-action="delete" title="Delete" aria-label="Delete">✕</button>');
+        }
+        if (!parts.length) return "";
+        return '<div class="msg-actions" role="toolbar" aria-label="Message actions">' + parts.join("") + "</div>";
+    }
+
+    function syncMessageActions(row, m) {
+        var existing = row.querySelector(".msg-actions");
+        var html = buildMsgActionsHtml(m);
+        if (!html) {
+            if (existing) existing.remove();
+            return;
+        }
+        if (existing) existing.outerHTML = html;
+        else {
+            var cluster = row.querySelector(".msg-cluster") || row;
+            cluster.insertAdjacentHTML("beforeend", html);
+        }
     }
 
     function appendMessage(m) {
@@ -1314,10 +1333,15 @@
             row.appendChild(col);
         }
 
+        var cluster = document.createElement("div");
+        cluster.className = "msg-cluster";
         var bubble = document.createElement("div");
         bubble.className = "bubble";
         bubble.innerHTML = buildBubbleInner(m, chat);
-        row.appendChild(bubble);
+        cluster.appendChild(bubble);
+        var actionsHtml = buildMsgActionsHtml(m);
+        if (actionsHtml) cluster.insertAdjacentHTML("beforeend", actionsHtml);
+        row.appendChild(cluster);
         $("messages").appendChild(row);
         hydrateAuthMedia(row);
     }
@@ -1339,6 +1363,7 @@
             bubble.innerHTML = buildBubbleInner(m, chat);
             hydrateAuthMedia(bubble);
         }
+        syncMessageActions(row, m);
         if (m.chatId === state.activeChatId || (prev && prev.chatId === state.activeChatId)) {
             bumpChat(m.chatId || (prev && prev.chatId), m, false);
         }
