@@ -111,7 +111,15 @@ namespace NexusTeam.Server.Controllers
             preference.SoundEnabled = dto.SoundEnabled;
             preference.Theme = dto.Theme;
             preference.Language = dto.Language;
-            preference.MutedChats = dto.MutedChats ?? new List<string>();
+            if (dto.MutedChats != null)
+            {
+                preference.MutedChats = dto.MutedChats;
+            }
+            else
+            {
+                preference.MutedChats ??= new List<string>();
+            }
+
             if (dto.PinnedChats != null)
             {
                 preference.PinnedChats = dto.PinnedChats;

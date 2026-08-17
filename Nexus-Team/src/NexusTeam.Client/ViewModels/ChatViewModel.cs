@@ -2462,7 +2462,7 @@ namespace NexusTeam.Client.ViewModels
             }
 
             conversation.UpdateAvatarUrl(chat.AvatarUrl);
-            if (chat.Participants != null)
+            if (chat.Participants != null && chat.Participants.Count > 0)
             {
                 conversation.UpdateParticipants(chat.Participants);
             }
@@ -2470,7 +2470,11 @@ namespace NexusTeam.Client.ViewModels
             conversation.UpdateCreatedBy(chat.CreatedBy);
             if (this.SelectedConversation?.Id == chat.Id)
             {
-                this.RefreshGroupMembers(chat.Participants);
+                if (chat.Participants != null && chat.Participants.Count > 0)
+                {
+                    this.RefreshGroupMembers(chat.Participants);
+                }
+
                 _ = this.LoadAddCandidatesAsync();
             }
 
@@ -3314,7 +3318,7 @@ namespace NexusTeam.Client.ViewModels
                 }
 
                 conversation.UpdateAvatarUrl(chat.AvatarUrl);
-                if (chat.Participants != null)
+                if (chat.Participants != null && chat.Participants.Count > 0)
                 {
                     conversation.UpdateParticipants(chat.Participants);
                 }
@@ -3322,7 +3326,11 @@ namespace NexusTeam.Client.ViewModels
                 conversation.UpdateCreatedBy(chat.CreatedBy);
                 if (this.SelectedConversation?.Id == chat.Id)
                 {
-                    this.RefreshGroupMembers(chat.Participants);
+                    if (chat.Participants != null && chat.Participants.Count > 0)
+                    {
+                        this.RefreshGroupMembers(chat.Participants);
+                    }
+
                     _ = this.LoadAddCandidatesAsync();
                 }
 

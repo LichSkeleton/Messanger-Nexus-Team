@@ -1178,12 +1178,7 @@
     }
 
     function isSystemMessage(m) {
-        if (!m) return false;
-        if (m.isSystem) return true;
-        var text = (m.content || "").trim();
-        return / left the group$/.test(text)
-            || / was added to the group$/.test(text)
-            || / was removed from the group$/.test(text);
+        return !!(m && m.isSystem);
     }
 
     function canEditMessage(m) {
@@ -2628,8 +2623,7 @@
             notificationsEnabled: $("prefNotifications").checked,
             soundEnabled: $("prefSound").checked,
             theme: theme,
-            language: "en",
-            mutedChats: []
+            language: "en"
         };
         applyTheme(theme);
         state.prefs.notificationsEnabled = dto.notificationsEnabled;

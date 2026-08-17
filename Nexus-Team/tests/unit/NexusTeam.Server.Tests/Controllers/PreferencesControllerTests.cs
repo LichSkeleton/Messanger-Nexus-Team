@@ -88,6 +88,26 @@ namespace NexusTeam.Server.Tests.Controllers
             Assert.False(fixture.Repository.Updated!.NotificationsEnabled);
         }
 
+        [Fact]
+        public async Task UpdatePreferences_WhenPinnedChatsOmitted_PreservesExistingPins()
+        {
+            var fixture = new Fixture("user-1");
+            fixture.Repository.Current = new UserPreference
+            {
+                Id = "id",
+                UserId = "user-1",
+                PinnedChats = new List<string> { "chat-1" },
+                MutedChats = new List<string> { "chat-2" },
+            };
+
+            await fixture.Controller.UpdatePreferences(
+                new UserPreferenceDto { NotificationsEnabled = false, Theme = "dark", Language = "en" },
+                default);
+
+            Assert.Equal(new[] { "chat-1" }, fixture.Repository.Updated!.PinnedChats);
+            Assert.Equal(new[] { "chat-2" }, fixture.Repository.Updated.MutedChats);
+        }
+
         private sealed class Fixture
         {
             public readonly DateTime Now = new DateTime(2026, 8, 12, 12, 0, 0, DateTimeKind.Utc);

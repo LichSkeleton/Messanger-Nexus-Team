@@ -1966,7 +1966,7 @@
                                     <Grid>
                                         <StackPanel>
                                             <TextBlock Text="{Binding ReplyBannerText}" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
-                                            <TextBlock Text="{Binding MessageBeingRepliedTo.ReplyQuotePreview}" Foreground="#CCFFFFFF" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="420"/>
+                                            <TextBlock Text="{Binding MessageBeingRepliedTo.ComposerPreview}" Foreground="#CCFFFFFF" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="420"/>
                                         </StackPanel>
                                         <Button Content="Cancel" Command="{Binding CancelReplyCommand}" HorizontalAlignment="Right" Style="{StaticResource GlassActionButtonStyle}" Width="50" Height="20" FontSize="10"/>
                                     </Grid>

@@ -80,11 +80,7 @@ namespace NexusTeam.Client.ViewModels
             this.senderName = senderName;
             this.senderAvatarUrl = senderAvatarUrl;
             this.isGroupChat = isGroupChat;
-            this.isSystem = messageDto.IsSystem
-                || (!string.IsNullOrWhiteSpace(messageDto.Content)
-                    && (messageDto.Content.EndsWith(" left the group", StringComparison.Ordinal)
-                        || messageDto.Content.EndsWith(" was added to the group", StringComparison.Ordinal)
-                        || messageDto.Content.EndsWith(" was removed from the group", StringComparison.Ordinal)));
+            this.isSystem = messageDto.IsSystem;
             this.replyToId = messageDto.ReplyToId;
             this.replyToSenderId = messageDto.ReplyToSenderId;
             this.replyToSenderName = messageDto.ReplyToSenderName;
@@ -224,6 +220,27 @@ namespace NexusTeam.Client.ViewModels
         public string ReplyQuotePreview => string.IsNullOrWhiteSpace(this.replyToContent)
             ? "Message"
             : this.replyToContent;
+
+        /// <summary>
+        /// Gets the preview of this message's own content for the composer reply banner.
+        /// </summary>
+        public string ComposerPreview
+        {
+            get
+            {
+                if (this.IsDeleted)
+                {
+                    return "Message was deleted";
+                }
+
+                if (!string.IsNullOrWhiteSpace(this.Content))
+                {
+                    return this.Content;
+                }
+
+                return this.HasAttachments ? "Attachment" : "Message";
+            }
+        }
 
         /// <summary>
         /// Gets a value indicating whether this message was forwarded.
@@ -398,6 +415,7 @@ namespace NexusTeam.Client.ViewModels
                 {
                     this.OnPropertyChanged(nameof(this.CanQuote));
                     this.OnPropertyChanged(nameof(this.CanManageOwnMessage));
+                    this.OnPropertyChanged(nameof(this.ComposerPreview));
                 }
             }
         }
@@ -629,6 +647,7 @@ namespace NexusTeam.Client.ViewModels
 
                 // Notify UI that attachments have changed
                 this.OnPropertyChanged(nameof(this.HasAttachments));
+                this.OnPropertyChanged(nameof(this.ComposerPreview));
                 this.OnPropertyChanged(nameof(this.HasImageAttachments));
             }
 
@@ -697,6 +716,7 @@ namespace NexusTeam.Client.ViewModels
             this.OnPropertyChanged(nameof(this.DisplayContent));
             this.OnPropertyChanged(nameof(this.NeedsReadMore));
             this.OnPropertyChanged(nameof(this.ReadMoreButtonText));
+            this.OnPropertyChanged(nameof(this.ComposerPreview));
         }
     }
 }
