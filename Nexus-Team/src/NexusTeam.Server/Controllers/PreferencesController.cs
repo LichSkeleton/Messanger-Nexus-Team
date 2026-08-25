@@ -1,7 +1,6 @@
 namespace NexusTeam.Server.Controllers
 {
     using System;
-    using System.Collections.Generic;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Mvc;
@@ -64,7 +63,6 @@ namespace NexusTeam.Server.Controllers
                     Language = "en",
                     CreatedAt = this.clock.UtcNow,
                     UpdatedAt = this.clock.UtcNow,
-                    PinnedChats = new List<string>(),
                 };
 
                 await this.preferenceRepository.CreateAsync(preference, cancellationToken);
@@ -111,24 +109,7 @@ namespace NexusTeam.Server.Controllers
             preference.SoundEnabled = dto.SoundEnabled;
             preference.Theme = dto.Theme;
             preference.Language = dto.Language;
-            if (dto.MutedChats != null)
-            {
-                preference.MutedChats = dto.MutedChats;
-            }
-            else
-            {
-                preference.MutedChats ??= new List<string>();
-            }
-
-            if (dto.PinnedChats != null)
-            {
-                preference.PinnedChats = dto.PinnedChats;
-            }
-            else
-            {
-                preference.PinnedChats ??= new List<string>();
-            }
-
+            preference.MutedChats = dto.MutedChats;
             preference.UpdatedAt = this.clock.UtcNow;
 
             if (preference.Id == null)
@@ -154,8 +135,7 @@ namespace NexusTeam.Server.Controllers
                 SoundEnabled = preference.SoundEnabled,
                 Theme = preference.Theme,
                 Language = preference.Language,
-                MutedChats = preference.MutedChats ?? new List<string>(),
-                PinnedChats = preference.PinnedChats ?? new List<string>(),
+                MutedChats = preference.MutedChats,
             };
         }
     }

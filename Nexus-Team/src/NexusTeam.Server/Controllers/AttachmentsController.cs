@@ -57,8 +57,6 @@ namespace NexusTeam.Server.Controllers
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The uploaded attachment DTO.</returns>
         [HttpPost("upload")]
-        [RequestSizeLimit(FileHelper.MaxUploadRequestBodyBytes)]
-        [RequestFormLimits(MultipartBodyLengthLimit = FileHelper.MaxUploadRequestBodyBytes)]
         [ProducesResponseType(typeof(MessageAttachmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
@@ -67,12 +65,6 @@ namespace NexusTeam.Server.Controllers
             [FromForm] string messageId,
             CancellationToken cancellationToken)
         {
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
             if (file == null || file.Length == 0)
             {
                 return this.BadRequest("No file provided.");
@@ -98,11 +90,6 @@ namespace NexusTeam.Server.Controllers
 
             try
             {
-                if (!string.IsNullOrWhiteSpace(messageId))
-                {
-                    await this.EnsureMessageParticipantAsync(messageId, userId, cancellationToken);
-                }
-
                 using var stream = file.OpenReadStream();
                 var attachment = await this.attachmentService.SaveAttachmentAsync(
                     messageId,
@@ -163,14 +150,6 @@ namespace NexusTeam.Server.Controllers
 
                 return this.Ok(attachment);
             }
-            catch (Shared.Exceptions.UnauthorizedException)
-            {
-                return this.Unauthorized();
-            }
-            catch (Shared.Exceptions.NotFoundException)
-            {
-                return this.NotFound();
-            }
             catch (Exception ex)
             {
                 this.logger.Error(ex, "Failed to upload attachment: {FileName}", file.FileName);
@@ -199,17 +178,6 @@ namespace NexusTeam.Server.Controllers
                     return this.NotFound("Attachment not found.");
                 }
 
-                var userId = this.HttpContext.Items["UserId"] as string;
-                if (string.IsNullOrEmpty(userId))
-                {
-                    return this.Unauthorized();
-                }
-
-                if (!string.IsNullOrWhiteSpace(attachment.MessageId))
-                {
-                    await this.EnsureMessageParticipantAsync(attachment.MessageId, userId, cancellationToken);
-                }
-
                 var stream = await this.attachmentService.GetAttachmentStreamAsync(attachmentId, cancellationToken);
                 if (stream == null)
                 {
@@ -219,14 +187,6 @@ namespace NexusTeam.Server.Controllers
                 this.logger.Information("Attachment downloaded: {AttachmentId}", attachmentId);
 
                 return this.File(stream, attachment.ContentType, attachment.FileName);
-            }
-            catch (Shared.Exceptions.UnauthorizedException)
-            {
-                return this.Unauthorized();
-            }
-            catch (Shared.Exceptions.NotFoundException)
-            {
-                return this.NotFound();
             }
             catch (Exception ex)
             {
@@ -256,17 +216,6 @@ namespace NexusTeam.Server.Controllers
                     return this.NotFound("Attachment not found.");
                 }
 
-                var userId = this.HttpContext.Items["UserId"] as string;
-                if (string.IsNullOrEmpty(userId))
-                {
-                    return this.Unauthorized();
-                }
-
-                if (!string.IsNullOrWhiteSpace(attachment.MessageId))
-                {
-                    await this.EnsureMessageParticipantAsync(attachment.MessageId, userId, cancellationToken);
-                }
-
                 var stream = await this.attachmentService.GetThumbnailStreamAsync(attachmentId, cancellationToken);
                 if (stream == null)
                 {
@@ -277,14 +226,6 @@ namespace NexusTeam.Server.Controllers
 
                 // Thumbnails are always JPEG
                 return this.File(stream, "image/jpeg", $"{attachmentId}_thumb.jpg");
-            }
-            catch (Shared.Exceptions.UnauthorizedException)
-            {
-                return this.Unauthorized();
-            }
-            catch (Shared.Exceptions.NotFoundException)
-            {
-                return this.NotFound();
             }
             catch (Exception ex)
             {
@@ -305,25 +246,10 @@ namespace NexusTeam.Server.Controllers
             string messageId,
             CancellationToken cancellationToken)
         {
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
             try
             {
-                await this.EnsureMessageParticipantAsync(messageId, userId, cancellationToken);
                 var attachments = await this.attachmentService.GetMessageAttachmentsAsync(messageId, cancellationToken);
                 return this.Ok(attachments);
-            }
-            catch (Shared.Exceptions.UnauthorizedException)
-            {
-                return this.Unauthorized();
-            }
-            catch (Shared.Exceptions.NotFoundException)
-            {
-                return this.NotFound();
             }
             catch (Exception ex)
             {
@@ -340,8 +266,6 @@ namespace NexusTeam.Server.Controllers
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The updated attachment DTO.</returns>
         [HttpPut("{attachmentId}")]
-        [RequestSizeLimit(FileHelper.MaxUploadRequestBodyBytes)]
-        [RequestFormLimits(MultipartBodyLengthLimit = FileHelper.MaxUploadRequestBodyBytes)]
         [ProducesResponseType(typeof(MessageAttachmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -351,12 +275,6 @@ namespace NexusTeam.Server.Controllers
             IFormFile file,
             CancellationToken cancellationToken)
         {
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
             if (file == null || file.Length == 0)
             {
                 return this.BadRequest("No file provided.");
@@ -382,8 +300,6 @@ namespace NexusTeam.Server.Controllers
 
             try
             {
-                await this.EnsureAttachmentParticipantAsync(attachmentId, userId, cancellationToken);
-
                 using var stream = file.OpenReadStream();
                 var attachment = await this.attachmentService.UpdateAttachmentAsync(
                     attachmentId,
@@ -398,14 +314,6 @@ namespace NexusTeam.Server.Controllers
                     attachmentId);
 
                 return this.Ok(attachment);
-            }
-            catch (Shared.Exceptions.UnauthorizedException)
-            {
-                return this.Unauthorized();
-            }
-            catch (Shared.Exceptions.NotFoundException)
-            {
-                return this.NotFound();
             }
             catch (InvalidOperationException ex)
             {
@@ -432,16 +340,8 @@ namespace NexusTeam.Server.Controllers
             string attachmentId,
             CancellationToken cancellationToken)
         {
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
             try
             {
-                await this.EnsureAttachmentParticipantAsync(attachmentId, userId, cancellationToken);
-
                 var success = await this.attachmentService.DeleteAttachmentAsync(attachmentId, cancellationToken);
                 if (!success)
                 {
@@ -452,47 +352,10 @@ namespace NexusTeam.Server.Controllers
 
                 return this.NoContent();
             }
-            catch (Shared.Exceptions.UnauthorizedException)
-            {
-                return this.Unauthorized();
-            }
-            catch (Shared.Exceptions.NotFoundException)
-            {
-                return this.NotFound();
-            }
             catch (Exception ex)
             {
                 this.logger.Error(ex, "Failed to delete attachment: {AttachmentId}", attachmentId);
                 return this.StatusCode(StatusCodes.Status500InternalServerError, "Failed to delete attachment.");
-            }
-        }
-
-        private async Task EnsureMessageParticipantAsync(string messageId, string userId, CancellationToken cancellationToken)
-        {
-            var message = await this.messageService.GetMessageByIdAsync(messageId, cancellationToken);
-            if (message == null)
-            {
-                throw new Shared.Exceptions.NotFoundException($"Message with ID '{messageId}' not found.");
-            }
-
-            var chat = await this.chatService.GetChatByIdAsync(message.ChatId, userId, cancellationToken);
-            if (chat == null)
-            {
-                throw new Shared.Exceptions.UnauthorizedException("You are not a participant of this chat.");
-            }
-        }
-
-        private async Task EnsureAttachmentParticipantAsync(string attachmentId, string userId, CancellationToken cancellationToken)
-        {
-            var attachment = await this.attachmentService.GetAttachmentAsync(attachmentId, cancellationToken);
-            if (attachment == null)
-            {
-                throw new Shared.Exceptions.NotFoundException($"Attachment with ID '{attachmentId}' not found.");
-            }
-
-            if (!string.IsNullOrWhiteSpace(attachment.MessageId))
-            {
-                await this.EnsureMessageParticipantAsync(attachment.MessageId, userId, cancellationToken);
             }
         }
     }

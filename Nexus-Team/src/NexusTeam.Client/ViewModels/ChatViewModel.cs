@@ -28,7 +28,6 @@ namespace NexusTeam.Client.ViewModels
         private readonly IUserDirectoryService userDirectoryService;
         private readonly IErrorHandlingService errorHandlingService;
         private readonly IFileAttachmentService fileAttachmentService;
-        private readonly IAttachmentPreviewService attachmentPreviewService;
         private readonly IImageCompressionService imageCompressionService;
         private readonly IAvatarService avatarService;
         private readonly INavigationService navigationService;
@@ -45,7 +44,6 @@ namespace NexusTeam.Client.ViewModels
         private bool isLoadingConversations;
         private string? errorMessage;
         private MessageViewModel? messageBeingEdited;
-        private MessageViewModel? messageBeingRepliedTo;
         private CancellationTokenSource? typingCancellationTokenSource;
         private CancellationTokenSource? searchCancellationTokenSource;
         private ObservableCollection<AttachmentViewModel> pendingAttachments;
@@ -89,10 +87,7 @@ namespace NexusTeam.Client.ViewModels
         private ObservableCollection<AttachmentViewModel> imagesList;
 
         // --- GROUP CHAT PARTICIPANTS FIELDS ---
-        private ObservableCollection<GroupMemberViewModel> groupChatParticipants;
-        private ObservableCollection<SelectableUserViewModel> addCandidates;
-        private string memberSearchText = string.Empty;
-        private string addMemberSearchText = string.Empty;
+        private ObservableCollection<UserDto> groupChatParticipants;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ChatViewModel"/> class.
@@ -102,7 +97,6 @@ namespace NexusTeam.Client.ViewModels
         /// <param name="userDirectoryService">The user directory service.</param>
         /// <param name="errorHandlingService">The error handling service.</param>
         /// <param name="fileAttachmentService">The file attachment service.</param>
-        /// <param name="attachmentPreviewService">The attachment preview service.</param>
         /// <param name="imageCompressionService">The image compression service.</param>
         /// <param name="avatarService">The avatar service.</param>
         /// <param name="navigationService">The navigation service.</param>
@@ -116,7 +110,6 @@ namespace NexusTeam.Client.ViewModels
             IUserDirectoryService userDirectoryService,
             IErrorHandlingService errorHandlingService,
             IFileAttachmentService fileAttachmentService,
-            IAttachmentPreviewService attachmentPreviewService,
             IImageCompressionService imageCompressionService,
             IAvatarService avatarService,
             INavigationService navigationService,
@@ -130,7 +123,6 @@ namespace NexusTeam.Client.ViewModels
             this.userDirectoryService = userDirectoryService;
             this.errorHandlingService = errorHandlingService;
             this.fileAttachmentService = fileAttachmentService;
-            this.attachmentPreviewService = attachmentPreviewService;
             this.imageCompressionService = imageCompressionService;
             this.avatarService = avatarService;
             this.navigationService = navigationService;
@@ -157,8 +149,7 @@ namespace NexusTeam.Client.ViewModels
             this.imagesList = new ObservableCollection<AttachmentViewModel>();
 
             // Initialize group chat participants
-            this.groupChatParticipants = new ObservableCollection<GroupMemberViewModel>();
-            this.addCandidates = new ObservableCollection<SelectableUserViewModel>();
+            this.groupChatParticipants = new ObservableCollection<UserDto>();
 
             this.pendingAttachments = new ObservableCollection<AttachmentViewModel>();
             this.pendingAttachments.CollectionChanged += (s, e) => this.SendMessageCommand.NotifyCanExecuteChanged();
@@ -286,8 +277,6 @@ namespace NexusTeam.Client.ViewModels
             {
                 if (this.SetProperty(ref this.selectedConversation, value))
                 {
-                    this.MessageBeingRepliedTo = null;
-
                     // Clear search when changing chats
                     this.MessageSearchText = string.Empty;
                     _ = this.LoadMessagesForSelectedConversationAsync();
@@ -295,10 +284,6 @@ namespace NexusTeam.Client.ViewModels
                     this.StartCallCommand.NotifyCanExecuteChanged();
                     this.StartVoiceRecordingCommand.NotifyCanExecuteChanged();
                     this.StopVoiceRecordingCommand.NotifyCanExecuteChanged();
-                    this.OnPropertyChanged(nameof(this.CanManageGroupMembers));
-                    this.MemberSearchText = string.Empty;
-                    this.AddMemberSearchText = string.Empty;
-                    this.AddGroupMembersCommand.NotifyCanExecuteChanged();
                 }
             }
         }
@@ -359,42 +344,6 @@ namespace NexusTeam.Client.ViewModels
         {
             get => this.messageBeingEdited;
             set => this.SetProperty(ref this.messageBeingEdited, value);
-        }
-
-        /// <summary>
-        /// Gets or sets the message being replied to.
-        /// </summary>
-        public MessageViewModel? MessageBeingRepliedTo
-        {
-            get => this.messageBeingRepliedTo;
-            set
-            {
-                if (this.SetProperty(ref this.messageBeingRepliedTo, value))
-                {
-                    this.OnPropertyChanged(nameof(this.ReplyBannerText));
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gets the composer banner text while replying.
-        /// </summary>
-        public string ReplyBannerText
-        {
-            get
-            {
-                if (this.messageBeingRepliedTo == null)
-                {
-                    return string.Empty;
-                }
-
-                var name = this.messageBeingRepliedTo.IsCurrentUser
-                    ? "yourself"
-                    : (this.messageBeingRepliedTo.SenderName
-                        ?? this.SelectedConversation?.Name
-                        ?? "message");
-                return $"Replying to {name}";
-            }
         }
 
         /// <summary>
@@ -463,89 +412,11 @@ namespace NexusTeam.Client.ViewModels
         /// <summary>
         /// Gets the list of participants for group chats.
         /// </summary>
-        public ObservableCollection<GroupMemberViewModel> GroupChatParticipants
+        public ObservableCollection<UserDto> GroupChatParticipants
         {
             get => this.groupChatParticipants;
             private set => this.SetProperty(ref this.groupChatParticipants, value);
         }
-
-        /// <summary>
-        /// Gets or sets the members search filter.
-        /// </summary>
-        public string MemberSearchText
-        {
-            get => this.memberSearchText;
-            set
-            {
-                if (this.SetProperty(ref this.memberSearchText, value))
-                {
-                    this.OnPropertyChanged(nameof(this.FilteredGroupMembers));
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gets members matching the current search text.
-        /// </summary>
-        public IEnumerable<GroupMemberViewModel> FilteredGroupMembers
-        {
-            get
-            {
-                var query = (this.memberSearchText ?? string.Empty).Trim();
-                if (string.IsNullOrEmpty(query))
-                {
-                    return this.groupChatParticipants;
-                }
-
-                return this.groupChatParticipants.Where(member =>
-                    member.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || member.Username.Contains(query, StringComparison.OrdinalIgnoreCase));
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether the current user can add or remove group members.
-        /// </summary>
-        public bool CanManageGroupMembers => this.SelectedConversation?.IsOwner == true;
-
-        /// <summary>
-        /// Gets or sets the search filter for people who are not in the group.
-        /// </summary>
-        public string AddMemberSearchText
-        {
-            get => this.addMemberSearchText;
-            set
-            {
-                if (this.SetProperty(ref this.addMemberSearchText, value))
-                {
-                    this.OnPropertyChanged(nameof(this.FilteredAddCandidates));
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gets people who are not in the group, filtered by search text.
-        /// </summary>
-        public IEnumerable<SelectableUserViewModel> FilteredAddCandidates
-        {
-            get
-            {
-                var query = (this.addMemberSearchText ?? string.Empty).Trim();
-                if (string.IsNullOrEmpty(query))
-                {
-                    return this.addCandidates;
-                }
-
-                return this.addCandidates.Where(user =>
-                    user.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || (user.User.Username ?? string.Empty).Contains(query, StringComparison.OrdinalIgnoreCase));
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether any people outside the group are selected to add.
-        /// </summary>
-        public bool HasSelectedAddCandidates => this.addCandidates.Any(user => user.IsSelected);
 
         /// <summary>
         /// Gets the formatted profile status text.
@@ -773,16 +644,12 @@ namespace NexusTeam.Client.ViewModels
                         messageContent = " "; // Single space as placeholder for attachments-only message
                     }
 
-                    var replyToId = this.MessageBeingRepliedTo?.Id;
-
                     // First, send the message to get the real messageId (use HTTP for attachments)
                     var messageDto = await this.messagingService.SendMessageViaHttpAsync(
                         this.SelectedConversation.Id,
                         messageContent,
-                        replyToId: replyToId,
+                        replyToId: null,
                         attachmentIds: new List<string>());
-
-                    this.MessageBeingRepliedTo = null;
 
                     // Message will be added to UI via WebSocket MessageReceived event
                     // No optimistic UI update to prevent duplicates
@@ -884,79 +751,9 @@ namespace NexusTeam.Client.ViewModels
         {
             if (message.IsCurrentUser && !message.IsDeleted)
             {
-                this.MessageBeingRepliedTo = null;
                 this.MessageBeingEdited = message;
                 this.MessageText = message.Content;
                 message.IsEditing = true;
-            }
-        }
-
-        /// <summary>
-        /// Command to reply to a message.
-        /// </summary>
-        /// <param name="message">The message to reply to.</param>
-        [RelayCommand]
-        private void ReplyToMessage(MessageViewModel message)
-        {
-            if (message == null || !message.CanQuote)
-            {
-                return;
-            }
-
-            if (this.MessageBeingEdited != null)
-            {
-                this.MessageBeingEdited.IsEditing = false;
-                this.MessageBeingEdited = null;
-            }
-
-            this.MessageBeingRepliedTo = message;
-        }
-
-        /// <summary>
-        /// Command to cancel a pending reply.
-        /// </summary>
-        [RelayCommand]
-        private void CancelReply()
-        {
-            this.MessageBeingRepliedTo = null;
-        }
-
-        /// <summary>
-        /// Command to forward a message to another chat, including Saved Messages.
-        /// </summary>
-        /// <param name="message">The message to forward.</param>
-        [RelayCommand]
-        private async Task ForwardMessageAsync(MessageViewModel message)
-        {
-            if (message == null || !message.CanQuote)
-            {
-                return;
-            }
-
-            try
-            {
-                var dialog = new Views.ForwardMessageDialog
-                {
-                    Owner = Application.Current.MainWindow,
-                };
-
-                dialog.ViewModel.PopulateChats(this.Conversations);
-
-                var result = dialog.ShowDialog();
-                if (result != true || dialog.ViewModel.SelectedChat == null)
-                {
-                    return;
-                }
-
-                var target = dialog.ViewModel.SelectedChat;
-                await this.messagingService.ForwardMessageAsync(target.Id, message.Id);
-                this.logger.Information("Forwarded message {MessageId} to chat {ChatId}", message.Id, target.Id);
-                this.errorHandlingService.ShowInfo($"Forwarded to {target.Name}");
-            }
-            catch (Exception ex)
-            {
-                this.logger.Error(ex, "Failed to forward message {MessageId}", message.Id);
-                this.errorHandlingService.HandleError(ex, "Failed to forward message");
             }
         }
 
@@ -1427,27 +1224,61 @@ namespace NexusTeam.Client.ViewModels
         }
 
         /// <summary>
-        /// Command to preview a supported attachment before downloading.
+        /// Command to preview code file.
         /// </summary>
         [RelayCommand]
-        private async Task PreviewAttachmentAsync(AttachmentViewModel attachment)
+        private async Task PreviewCodeAsync(AttachmentViewModel attachment)
         {
-            if (attachment.AttachmentDto == null)
+            if (attachment.AttachmentDto == null || !attachment.IsCodeFile)
             {
                 return;
             }
 
             try
             {
-                await this.attachmentPreviewService.PreviewAsync(
-                    attachment,
-                    this.SelectedConversation?.Id,
-                    Application.Current?.MainWindow);
+                var filePath = await this.fileAttachmentService.DownloadAttachmentAsync(attachment.AttachmentDto);
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                {
+                    this.errorHandlingService.ShowError("Failed to download code file for preview.");
+                    return;
+                }
+
+                var codeContent = await File.ReadAllTextAsync(filePath);
+
+                // Find the message that contains this attachment to get messageId and chatId
+                string? messageId = attachment.AttachmentDto.MessageId;
+                string? chatId = this.SelectedConversation?.Id;
+
+                // Try to find message in current conversation
+                if (string.IsNullOrEmpty(messageId) || string.IsNullOrEmpty(chatId))
+                {
+                    var message = this.GetMessageViewModels()
+                        .FirstOrDefault(m => m.Attachments.Any(a => a.AttachmentDto?.Id == attachment.AttachmentDto.Id));
+                    if (message != null)
+                    {
+                        messageId = message.Id;
+                        chatId = message.ChatId;
+                    }
+                }
+
+                var previewWindow = new Views.CodePreviewWindow
+                {
+                    Owner = Application.Current.MainWindow,
+                };
+                previewWindow.LoadCode(
+                    codeContent,
+                    attachment.FileName,
+                    attachment.AttachmentDto.Id,
+                    messageId,
+                    chatId,
+                    this.fileAttachmentService,
+                    this.messagingService);
+                previewWindow.ShowDialog();
             }
             catch (Exception ex)
             {
-                this.logger.Error(ex, "Failed to preview attachment: {FileName}", attachment.FileName);
-                this.errorHandlingService.ShowError($"Failed to preview file: {ex.Message}");
+                this.logger.Error(ex, "Failed to preview code file");
+                this.errorHandlingService.ShowError($"Failed to preview code: {ex.Message}");
             }
         }
 
@@ -1507,8 +1338,6 @@ namespace NexusTeam.Client.ViewModels
                             isGroupChat);
                         this.Messages.Add(vm);
                     }
-
-                    this.HydrateReplyPreviews();
                 });
             }
             catch (Exception ex)
@@ -1888,13 +1717,6 @@ namespace NexusTeam.Client.ViewModels
         {
             try
             {
-                var personalCount = this.Folders.Count(f => !f.IsAllChatsFolder);
-                if (personalCount >= 5)
-                {
-                    this.errorHandlingService.HandleError(new InvalidOperationException("You can have at most 5 folders."), "You can have at most 5 folders");
-                    return;
-                }
-
                 var availableChats = this.Conversations.ToList();
 
                 var dialog = new Views.CreateFolderDialog
@@ -2159,16 +1981,6 @@ namespace NexusTeam.Client.ViewModels
                 return;
             }
 
-            if (conversation.Type == ChatType.SavedMessages
-                || (conversation.IsGroup && !conversation.IsOwner))
-            {
-                this.errorHandlingService.ShowInfo(
-                    conversation.IsGroup
-                        ? "Only the group owner can delete the group."
-                        : "Saved Messages cannot be deleted.");
-                return;
-            }
-
             var result = MessageBox.Show(
                 $"Are you sure you want to permanently delete the chat \"{conversation.Name}\"?\n\n" +
                 "This will delete all messages, images, and files.\n" +
@@ -2370,209 +2182,6 @@ namespace NexusTeam.Client.ViewModels
         }
 
         /// <summary>
-        /// Adds selected people from the members overlay to the group (owner only).
-        /// </summary>
-        [RelayCommand(CanExecute = nameof(CanAddSelectedMembers))]
-        private async Task AddGroupMembersAsync()
-        {
-            var conversation = this.SelectedConversation;
-            if (conversation == null || !conversation.IsOwner)
-            {
-                return;
-            }
-
-            var selectedIds = this.addCandidates
-                .Where(user => user.IsSelected && !string.IsNullOrWhiteSpace(user.User?.Id))
-                .Select(user => user.User.Id)
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-
-            if (selectedIds.Count == 0)
-            {
-                return;
-            }
-
-            try
-            {
-                var updated = await this.messagingService.AddChatParticipantsAsync(conversation.Id, selectedIds);
-                await Application.Current.Dispatcher.InvokeAsync(() => this.ApplyChatDto(updated));
-                this.errorHandlingService.ShowInfo("Members added.");
-            }
-            catch (Exception ex)
-            {
-                this.logger.Error(ex, "Failed to add members to group {ChatId}", conversation.Id);
-                this.errorHandlingService.HandleError(ex, "Failed to add members. Please try again.");
-            }
-        }
-
-        private bool CanAddSelectedMembers()
-        {
-            return this.CanManageGroupMembers && this.HasSelectedAddCandidates;
-        }
-
-        /// <summary>
-        /// Removes a member from the selected group (owner only).
-        /// </summary>
-        /// <param name="member">The member to remove.</param>
-        [RelayCommand]
-        private async Task RemoveGroupMemberAsync(GroupMemberViewModel? member)
-        {
-            var conversation = this.SelectedConversation;
-            if (conversation == null || !conversation.IsOwner || member == null || !member.CanRemove)
-            {
-                return;
-            }
-
-            var result = MessageBox.Show(
-                $"Remove {member.DisplayName} from \"{conversation.Name}\"?",
-                "Remove member",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question,
-                MessageBoxResult.No);
-
-            if (result != MessageBoxResult.Yes)
-            {
-                return;
-            }
-
-            try
-            {
-                var updated = await this.messagingService.RemoveChatParticipantAsync(conversation.Id, member.Id);
-                await Application.Current.Dispatcher.InvokeAsync(() => this.ApplyChatDto(updated));
-                this.errorHandlingService.ShowInfo($"{member.DisplayName} was removed from the group.");
-            }
-            catch (Exception ex)
-            {
-                this.logger.Error(ex, "Failed to remove member {UserId} from group {ChatId}", member.Id, conversation.Id);
-                this.errorHandlingService.HandleError(ex, "Failed to remove member. Please try again.");
-            }
-        }
-
-        private void ApplyChatDto(ChatDto chat)
-        {
-            var conversation = this.Conversations.FirstOrDefault(c => c.Id == chat.Id) ?? this.SelectedConversation;
-            if (conversation == null)
-            {
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(chat.Name))
-            {
-                conversation.Name = chat.Name;
-            }
-
-            conversation.UpdateAvatarUrl(chat.AvatarUrl);
-            if (chat.Participants != null && chat.Participants.Count > 0)
-            {
-                conversation.UpdateParticipants(chat.Participants);
-            }
-
-            conversation.UpdateCreatedBy(chat.CreatedBy);
-            if (this.SelectedConversation?.Id == chat.Id)
-            {
-                if (chat.Participants != null && chat.Participants.Count > 0)
-                {
-                    this.RefreshGroupMembers(chat.Participants);
-                }
-
-                _ = this.LoadAddCandidatesAsync();
-            }
-
-            this.ConversationsView.Refresh();
-        }
-
-        private void RefreshGroupMembers(IEnumerable<UserDto>? participants)
-        {
-            this.GroupChatParticipants.Clear();
-            var conversation = this.SelectedConversation;
-            var currentUserId = this.authenticationService.CurrentUser?.Id ?? string.Empty;
-            var ownerId = conversation?.CreatedBy ?? string.Empty;
-            var canManage = conversation?.IsOwner == true;
-
-            if (participants != null)
-            {
-                foreach (var participant in participants)
-                {
-                    this.GroupChatParticipants.Add(new GroupMemberViewModel(
-                        participant,
-                        string.Equals(participant.Id, ownerId, StringComparison.Ordinal),
-                        canManage && !string.Equals(participant.Id, currentUserId, StringComparison.Ordinal)));
-                }
-            }
-
-            this.OnPropertyChanged(nameof(this.FilteredGroupMembers));
-            this.OnPropertyChanged(nameof(this.CanManageGroupMembers));
-            this.OnPropertyChanged(nameof(this.GroupChatParticipants));
-            this.AddGroupMembersCommand.NotifyCanExecuteChanged();
-        }
-
-        private async Task LoadAddCandidatesAsync()
-        {
-            var conversation = this.SelectedConversation;
-            if (conversation == null || !conversation.IsOwner)
-            {
-                await Application.Current.Dispatcher.InvokeAsync(this.ClearAddCandidates);
-                return;
-            }
-
-            try
-            {
-                var availableUsers = await this.userDirectoryService.GetAvailableUsersAsync();
-                var existingIds = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var participant in conversation.Participants)
-                {
-                    existingIds.Add(participant.Id);
-                }
-
-                foreach (var member in this.groupChatParticipants)
-                {
-                    existingIds.Add(member.Id);
-                }
-
-                await Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    this.ClearAddCandidates();
-                    foreach (var user in availableUsers.Where(u => !existingIds.Contains(u.Id)))
-                    {
-                        var candidate = new SelectableUserViewModel { User = user };
-                        candidate.PropertyChanged += this.OnAddCandidatePropertyChanged;
-                        this.addCandidates.Add(candidate);
-                    }
-
-                    this.OnPropertyChanged(nameof(this.FilteredAddCandidates));
-                    this.OnPropertyChanged(nameof(this.HasSelectedAddCandidates));
-                    this.AddGroupMembersCommand.NotifyCanExecuteChanged();
-                });
-            }
-            catch (Exception ex)
-            {
-                this.logger.Warning(ex, "Failed to load people to add for group {ChatId}", conversation.Id);
-            }
-        }
-
-        private void ClearAddCandidates()
-        {
-            foreach (var candidate in this.addCandidates)
-            {
-                candidate.PropertyChanged -= this.OnAddCandidatePropertyChanged;
-            }
-
-            this.addCandidates.Clear();
-            this.OnPropertyChanged(nameof(this.FilteredAddCandidates));
-            this.OnPropertyChanged(nameof(this.HasSelectedAddCandidates));
-            this.AddGroupMembersCommand.NotifyCanExecuteChanged();
-        }
-
-        private void OnAddCandidatePropertyChanged(object? sender, PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == nameof(SelectableUserViewModel.IsSelected))
-            {
-                this.OnPropertyChanged(nameof(this.HasSelectedAddCandidates));
-                this.AddGroupMembersCommand.NotifyCanExecuteChanged();
-            }
-        }
-
-        /// <summary>
         /// Adds a chat to a personal folder.
         /// </summary>
         /// <param name="parameter">Tuple-like object: conversation and folder via object array, or folder with conversation from selected.</param>
@@ -2641,12 +2250,6 @@ namespace NexusTeam.Client.ViewModels
             {
                 if (!folder.ChatIds.Contains(conversation.Id))
                 {
-                    return;
-                }
-
-                if (folder.ChatIds.Count <= 1)
-                {
-                    this.errorHandlingService.ShowInfo("Folder must contain at least one chat.");
                     return;
                 }
 
@@ -2931,10 +2534,7 @@ namespace NexusTeam.Client.ViewModels
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     this.Conversations.Clear();
-                    foreach (var conversation in conversationVms
-                        .OrderByDescending(c => c.Type == ChatType.SavedMessages
-                            || (!string.IsNullOrEmpty(c.Id) && c.Id.StartsWith("saved-", StringComparison.Ordinal)))
-                        .ThenByDescending(c => c.LastMessageAt))
+                    foreach (var conversation in conversationVms.OrderByDescending(c => c.LastMessageAt))
                     {
                         this.Conversations.Add(conversation);
                     }
@@ -3006,12 +2606,15 @@ namespace NexusTeam.Client.ViewModels
                         {
                             this.SelectedConversation.UpdateParticipants(chat.Participants);
 
+                            // Update GroupChatParticipants for UI display
                             await Application.Current.Dispatcher.InvokeAsync(() =>
                             {
-                                this.RefreshGroupMembers(chat.Participants);
+                                this.GroupChatParticipants.Clear();
+                                foreach (var participant in chat.Participants)
+                                {
+                                    this.GroupChatParticipants.Add(participant);
+                                }
                             });
-
-                            _ = this.LoadAddCandidatesAsync();
 
                             this.logger.Debug("Refreshed participants list for chat {ChatId}: {Count} participants", this.SelectedConversation.Id, chat.Participants.Count);
                         }
@@ -3087,7 +2690,6 @@ namespace NexusTeam.Client.ViewModels
 
                     // Insert date separators after all messages are loaded
                     this.InsertDateSeparators();
-                    this.HydrateReplyPreviews();
 
                     this.CalculateProfileStatistics();
 
@@ -3250,7 +2852,6 @@ namespace NexusTeam.Client.ViewModels
                     insertIndex = this.InsertDateSeparatorIfNeeded(messageDto.CreatedAt, insertIndex);
 
                     this.Messages.Insert(insertIndex, messageViewModel);
-                    this.HydrateReplyPreviews();
 
                     this.logger.Information(
                         "Message {MessageId} added to chat {ChatId} by user {SenderId}",
@@ -3318,22 +2919,6 @@ namespace NexusTeam.Client.ViewModels
                 }
 
                 conversation.UpdateAvatarUrl(chat.AvatarUrl);
-                if (chat.Participants != null && chat.Participants.Count > 0)
-                {
-                    conversation.UpdateParticipants(chat.Participants);
-                }
-
-                conversation.UpdateCreatedBy(chat.CreatedBy);
-                if (this.SelectedConversation?.Id == chat.Id)
-                {
-                    if (chat.Participants != null && chat.Participants.Count > 0)
-                    {
-                        this.RefreshGroupMembers(chat.Participants);
-                    }
-
-                    _ = this.LoadAddCandidatesAsync();
-                }
-
                 this.ConversationsView.Refresh();
                 this.logger.Information("Applied chat update for {ChatId}: Name={Name}", chat.Id, chat.Name);
             });
@@ -3477,7 +3062,6 @@ namespace NexusTeam.Client.ViewModels
                         insertIndex = this.InsertDateSeparatorIfNeeded(messageDto.CreatedAt, insertIndex);
 
                         this.Messages.Insert(insertIndex, messageViewModel);
-                        this.HydrateReplyPreviews();
 
                         this.logger.Information(
                             "Message {MessageId} added to UI via EditMessage event with {AttachmentCount} attachments",
@@ -3871,8 +3455,6 @@ namespace NexusTeam.Client.ViewModels
         /// <returns>The preview text for the message.</returns>
         private string GetMessagePreview(MessageDto messageDto, int maxLength = 50)
         {
-            string preview;
-
             // Check if content is effectively empty (only whitespace)
             if (string.IsNullOrWhiteSpace(messageDto.Content))
             {
@@ -3885,27 +3467,21 @@ namespace NexusTeam.Client.ViewModels
                         attachmentNames += $" +{messageDto.Attachments.Count - 3} more";
                     }
 
-                    preview = $"📎 {attachmentNames}";
+                    return $"📎 {attachmentNames}";
                 }
-                else
-                {
-                    preview = "No content";
-                }
-            }
-            else
-            {
-                var trimmedContent = messageDto.Content.Trim();
-                preview = trimmedContent.Length <= maxLength
-                    ? trimmedContent
-                    : trimmedContent.Substring(0, maxLength - 3) + "...";
+
+                // No content and no attachments
+                return "No content";
             }
 
-            if (messageDto.IsForwarded)
+            // Content exists, truncate if needed
+            var trimmedContent = messageDto.Content.Trim();
+            if (trimmedContent.Length <= maxLength)
             {
-                return "Fwd: " + preview;
+                return trimmedContent;
             }
 
-            return preview;
+            return trimmedContent.Substring(0, maxLength - 3) + "...";
         }
 
         private string TruncateContent(string content, int maxLength)
@@ -4164,16 +3740,28 @@ namespace NexusTeam.Client.ViewModels
 
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        this.RefreshGroupMembers(chat.Participants);
-                        this.OnPropertyChanged(nameof(this.GroupChatParticipants));
+                        this.GroupChatParticipants.Clear();
+                        if (chat.Participants != null && chat.Participants.Any())
+                        {
+                            foreach (var participant in chat.Participants)
+                            {
+                                this.GroupChatParticipants.Add(participant);
+                            }
+
+                            this.logger.Debug("Loaded {Count} participants for group chat {ChatId} into UI", chat.Participants.Count, chat.Id);
+                            this.OnPropertyChanged(nameof(this.GroupChatParticipants));
+                        }
+                        else
+                        {
+                            this.logger.Warning("No participants found for group chat {ChatId}", chat.Id);
+                        }
                     });
 
+                    // Also update the conversation's participants list
                     if (chat.Participants != null && chat.Participants.Any())
                     {
                         this.SelectedConversation.UpdateParticipants(chat.Participants);
                     }
-
-                    await this.LoadAddCandidatesAsync();
                 }
                 else
                 {
@@ -4363,7 +3951,6 @@ namespace NexusTeam.Client.ViewModels
 
                     // Re-insert date separators after adding new messages
                     this.InsertDateSeparators();
-                    this.HydrateReplyPreviews();
                 });
             }
             catch (Exception ex)
@@ -4381,21 +3968,6 @@ namespace NexusTeam.Client.ViewModels
         private MessageViewModel? FindMessageViewModel(string messageId)
         {
             return this.GetMessageViewModels().FirstOrDefault(m => m.Id == messageId);
-        }
-
-        private void HydrateReplyPreviews()
-        {
-            var messages = this.GetMessageViewModels().ToList();
-            foreach (var message in messages)
-            {
-                if (!message.HasReply)
-                {
-                    continue;
-                }
-
-                var parent = messages.FirstOrDefault(m => m.Id == message.ReplyToId);
-                message.HydrateReplyFrom(parent);
-            }
         }
     }
 }

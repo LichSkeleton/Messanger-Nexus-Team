@@ -13,24 +13,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="styles.css?v=preview12" />
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="auth-mode">
-    <!-- ===================== DEVICE LOCK ===================== -->
-    <main id="lockView" class="lock-view hidden" aria-live="polite">
-        <div class="lock-card glass">
-            <img id="lockAvatar" class="lock-avatar" alt="" />
-            <div id="lockUsername" class="lock-username"></div>
-            <h1>Enter your PIN</h1>
-            <p class="lock-subtitle">This device is locked.</p>
-            <form id="unlockForm">
-                <input id="unlockPin" class="pin-input" type="password" inputmode="numeric"
-                       pattern="[0-9]{4}" maxlength="4" autocomplete="off" aria-label="Four-digit PIN" />
-                <p id="unlockError" class="auth-error" role="alert"></p>
-            </form>
-            <button id="forgotPinBtn" class="link-btn" type="button">Forgot PIN?</button>
-        </div>
-    </main>
     <!-- ===================== AUTH (login / register) ===================== -->
     <main id="authView" class="auth-view">
         <div class="auth-card glass">
@@ -143,6 +128,10 @@
                         <span id="peerName" class="peer-name">—</span>
                         <span id="peerStatus" class="peer-status"></span>
                     </div>
+                    <div id="callControls" class="call-controls hidden">
+                        <button id="audioCallBtn" class="icon-btn" title="Audio call" aria-label="Audio call">🎧</button>
+                        <button id="videoCallBtn" class="icon-btn" title="Video call" aria-label="Video call">📹</button>
+                    </div>
                     <button id="chatMenuBtn" class="icon-btn" title="Chat options" aria-label="Chat options">⋯</button>
                 </header>
 
@@ -152,15 +141,6 @@
                     <!-- Emoji popover -->
                     <div id="pickerPanel" class="picker-panel hidden">
                         <div id="emojiGrid" class="emoji-grid"></div>
-                    </div>
-
-                    <div id="replyStrip" class="reply-strip hidden">
-                        <div class="reply-strip-accent"></div>
-                        <div class="reply-strip-body">
-                            <span id="replyStripName" class="strip-name">Reply</span>
-                            <span id="replyStripText" class="reply-strip-preview"></span>
-                        </div>
-                        <button type="button" id="replyStripCancel" class="icon-btn strip-cancel" style="width:30px;height:30px;font-size:16px;margin-left:auto;" aria-label="Cancel reply">×</button>
                     </div>
 
                     <!-- Attachment / recording preview -->
@@ -185,6 +165,64 @@
 
     <input id="fileInput" type="file" class="hidden" />
 
+    <div id="incomingCallModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="incomingCallTitle">
+        <div class="modal glass call-modal">
+            <header class="modal-header">
+                <h2 id="incomingCallTitle">Incoming call</h2>
+                <button id="closeIncomingCall" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <div class="incoming-call-body">
+                <div class="incoming-call-avatar">
+                    <img id="incomingCallAvatar" class="avatar" alt="Caller avatar" />
+                </div>
+                <div class="incoming-call-info">
+                    <span id="incomingCallName" class="peer-name">Unknown</span>
+                    <span id="incomingCallType" class="peer-status"></span>
+                </div>
+                <div class="incoming-call-actions">
+                    <button id="acceptCallBtn" class="btn-primary">Accept</button>
+                    <button id="rejectCallBtn" class="btn-secondary">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="activeCallOverlay" class="modal-overlay hidden" aria-live="polite">
+        <div class="call-overlay glass">
+            <div class="call-panel">
+                <div class="call-media">
+                    <div class="remote-media">
+                        <video id="remoteVideo" autoplay playsinline></video>
+                        <audio id="remoteAudio" autoplay></audio>
+                        <div id="remoteFallback" class="remote-fallback hidden">
+                            <img id="remoteFallbackAvatar" class="avatar" alt="Remote avatar" />
+                            <div id="remoteFallbackLabel">Remote audio only</div>
+                        </div>
+                    </div>
+                    <div class="local-preview">
+                        <video id="localVideo" autoplay muted playsinline></video>
+                        <div id="localPreviewLabel">You</div>
+                    </div>
+                </div>
+                <div class="call-status-row">
+                    <div>
+                        <div id="callTitle" class="peer-name">Call</div>
+                        <div class="call-meta-row">
+                            <span id="callTimer" class="peer-status">00:00</span>
+                            <span id="callQuality" class="call-quality" title="Connection quality">●●●</span>
+                        </div>
+                    </div>
+                    <div class="call-action-buttons">
+                        <button id="muteCallBtn" class="icon-btn" aria-label="Mute microphone">🎙</button>
+                        <button id="cameraCallBtn" class="icon-btn" aria-label="Toggle camera">📷</button>
+                        <button id="screenShareCallBtn" class="icon-btn" aria-label="Share screen">🖥️</button>
+                        <button id="endCallBtn" class="icon-btn danger" aria-label="End call">⏹</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ===================== New chat / group modal ===================== -->
     <div id="newChatModal" class="modal-overlay hidden">
         <div class="modal glass">
@@ -200,30 +238,6 @@
             <input id="userSearch" class="search-input" type="search" placeholder="Search people" />
             <ul id="userList" class="user-list"></ul>
             <button id="createGroupBtn" class="btn-primary hidden" type="button">Create group</button>
-        </div>
-    </div>
-
-    <!-- ===================== Group members modal ===================== -->
-    <div id="membersModal" class="modal-overlay hidden">
-        <div class="modal glass">
-            <header class="modal-header">
-                <h2 id="membersTitle">Members</h2>
-                <button id="closeMembers" class="icon-btn" aria-label="Close">×</button>
-            </header>
-            <div class="members-body">
-                <div class="members-section-title">In this group</div>
-                <input id="memberSearch" class="search-input" type="search" placeholder="Search members" />
-                <ul id="memberList" class="user-list members-section-list"></ul>
-
-                <div id="addMembersSection" class="hidden">
-                    <div class="members-section-title">Everyone else</div>
-                    <div class="members-toolbar">
-                        <input id="addMemberSearch" class="search-input" type="search" placeholder="Search people to add" />
-                        <button id="addMemberBtn" class="btn-primary" type="button">Add</button>
-                    </div>
-                    <ul id="addMemberList" class="user-list members-section-list"></ul>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -263,88 +277,8 @@
                         <option value="light">Light</option>
                     </select>
                 </div>
-
-                <div class="setting-section-title">Chat wallpaper</div>
-                <p class="wallpaper-hint">Color theme for the conversation background</p>
-                <div id="wallpaperPicker" class="wallpaper-picker" role="radiogroup" aria-label="Chat wallpaper">
-                    <button type="button" class="wallpaper-swatch selected" data-wallpaper="default" aria-pressed="true" title="Default">
-                        <span class="wallpaper-preview wallpaper-preview--default"></span>
-                        <span class="wallpaper-name">Default</span>
-                    </button>
-                    <button type="button" class="wallpaper-swatch" data-wallpaper="ember" aria-pressed="false" title="Ember">
-                        <span class="wallpaper-preview wallpaper-preview--ember"></span>
-                        <span class="wallpaper-name">Ember</span>
-                    </button>
-                    <button type="button" class="wallpaper-swatch" data-wallpaper="ocean" aria-pressed="false" title="Ocean">
-                        <span class="wallpaper-preview wallpaper-preview--ocean"></span>
-                        <span class="wallpaper-name">Ocean</span>
-                    </button>
-                    <button type="button" class="wallpaper-swatch" data-wallpaper="forest" aria-pressed="false" title="Forest">
-                        <span class="wallpaper-preview wallpaper-preview--forest"></span>
-                        <span class="wallpaper-name">Forest</span>
-                    </button>
-                    <button type="button" class="wallpaper-swatch" data-wallpaper="midnight" aria-pressed="false" title="Midnight">
-                        <span class="wallpaper-preview wallpaper-preview--midnight"></span>
-                        <span class="wallpaper-name">Midnight</span>
-                    </button>
-                    <button type="button" class="wallpaper-swatch" data-wallpaper="rose" aria-pressed="false" title="Rose">
-                        <span class="wallpaper-preview wallpaper-preview--rose"></span>
-                        <span class="wallpaper-name">Rose</span>
-                    </button>
-                    <button type="button" class="wallpaper-swatch" data-wallpaper="aurora" aria-pressed="false" title="Aurora">
-                        <span class="wallpaper-preview wallpaper-preview--aurora"></span>
-                        <span class="wallpaper-name">Aurora</span>
-                    </button>
-                </div>
-
-                <div class="setting-section-title">Security</div>
-                <div class="setting-row">
-                    <div><div class="s-label">Auto-lock this device</div><div class="s-sub">Require your PIN after leaving NexusTeam</div></div>
-                    <label class="switch"><input type="checkbox" id="autoLockEnabled" /><span class="track"></span><span class="thumb"></span></label>
-                </div>
-                <div id="autoLockControls" class="hidden">
-                    <div class="setting-row">
-                        <div><div class="s-label">Lock after</div><div class="s-sub">Time when all NexusTeam tabs are hidden</div></div>
-                        <select id="autoLockTimeout" class="select-input">
-                            <option value="30">30 seconds</option>
-                            <option value="60">1 minute</option>
-                            <option value="300">5 minutes</option>
-                            <option value="900">15 minutes</option>
-                            <option value="1800">30 minutes</option>
-                        </select>
-                    </div>
-                    <div class="security-actions">
-                        <button id="saveLockSettingsBtn" class="btn-secondary" type="button">Save timeout</button>
-                        <button id="changePinBtn" class="btn-secondary" type="button">Change PIN</button>
-                        <button id="lockNowBtn" class="btn-secondary" type="button">Lock now</button>
-                    </div>
-                </div>
+                <button id="savePrefsBtn" class="btn-primary" type="button">Save preferences</button>
             </div>
-        </div>
-    </div>
-
-    <div id="securityModal" class="modal-overlay hidden">
-        <div class="modal glass security-modal">
-            <header class="modal-header">
-                <h2 id="securityModalTitle">Enable auto-lock</h2>
-                <button id="closeSecurityModal" class="icon-btn" aria-label="Close">×</button>
-            </header>
-            <div id="securityPasswordGroup">
-                <label class="field-label" for="securityPassword">Account password</label>
-                <input id="securityPassword" class="field-input" type="password" autocomplete="current-password" />
-            </div>
-            <div id="currentPinGroup" class="hidden">
-                <label class="field-label" for="currentPin">Current PIN</label>
-                <input id="currentPin" class="field-input" type="password" inputmode="numeric" maxlength="4" />
-            </div>
-            <div id="newPinGroup">
-                <label class="field-label" for="newPin">New PIN</label>
-                <input id="newPin" class="field-input" type="password" inputmode="numeric" maxlength="4" />
-                <label class="field-label" for="confirmPin">Confirm PIN</label>
-                <input id="confirmPin" class="field-input" type="password" inputmode="numeric" maxlength="4" />
-            </div>
-            <p id="securityError" class="auth-error" role="alert"></p>
-            <button id="saveSecurityBtn" class="btn-primary" type="button">Save</button>
         </div>
     </div>
 
@@ -375,21 +309,6 @@
     <div id="lightbox" class="lightbox hidden"><img id="lightboxImg" alt="" /></div>
     <div id="toast" class="toast hidden"></div>
 
-    <!-- ===================== File preview modal ===================== -->
-    <div id="filePreviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
-        <div class="modal glass file-preview-modal">
-            <header class="modal-header">
-                <h2 id="filePreviewTitle">Preview</h2>
-                <button id="closeFilePreview" class="icon-btn" type="button" aria-label="Close">×</button>
-            </header>
-            <p id="filePreviewNotice" class="file-preview-notice hidden"></p>
-            <div id="filePreviewBody" class="file-preview-body hidden"></div>
-            <div class="file-preview-actions">
-                <button id="filePreviewDownload" class="btn-primary" type="button">Download</button>
-            </div>
-        </div>
-    </div>
-
     <!-- ===================== Confirm dialog ===================== -->
     <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <div class="modal glass confirm-modal">
@@ -414,8 +333,8 @@
             </header>
             <div class="chat-options-list">
                 <button type="button" id="optEditGroup" class="chat-option hidden">Edit group name &amp; avatar</button>
-                <button type="button" id="optAddToFolder" class="chat-option">Add to folder…</button>
                 <button type="button" id="optLeaveGroup" class="chat-option danger hidden">Leave group</button>
+                <button type="button" id="optAddToFolder" class="chat-option">Add to folder…</button>
                 <button type="button" id="optDeleteChat" class="chat-option danger">Delete chat</button>
             </div>
         </div>
@@ -451,31 +370,14 @@
                 <button id="closeFolderModal" class="icon-btn" type="button" aria-label="Close">×</button>
             </header>
             <div class="modal-scroll">
-                <p class="folder-hint">Personal only — other users never see your folders. You can have up to 5.</p>
+                <p class="folder-hint">Personal only — other users never see your folders.</p>
                 <label class="field-label" for="folderNameInput">Folder name</label>
                 <input id="folderNameInput" class="setting-input" type="text" placeholder="Work, Friends…" />
-                <label class="field-label" for="folderChatSearch">Chats</label>
-                <p class="folder-hint">Select at least one chat.</p>
-                <input id="folderChatSearch" class="search-input" type="search" placeholder="Search chats" />
+                <label class="field-label">Chats (optional)</label>
                 <ul id="folderChatPickList" class="user-list folder-pick-list"></ul>
-                <p id="folderChatPickEmpty" class="empty-hint hidden">No chats match.</p>
-                <p id="folderChatCount" class="folder-chat-count">0 selected</p>
                 <button id="saveFolderBtn" class="btn-primary" type="button">Save folder</button>
                 <button id="deleteFolderBtn" class="btn-secondary danger-btn hidden" type="button" style="margin-top:10px;color:var(--danger);">Delete folder</button>
             </div>
-        </div>
-    </div>
-
-    <!-- ===================== Forward message picker ===================== -->
-    <div id="forwardModal" class="modal-overlay hidden">
-        <div class="modal glass confirm-modal">
-            <header class="modal-header">
-                <h2>Forward to</h2>
-                <button id="closeForward" class="icon-btn" type="button" aria-label="Close">×</button>
-            </header>
-            <input id="forwardChatSearch" class="search-input" type="search" placeholder="Search chats" />
-            <ul id="forwardChatList" class="user-list folder-pick-list"></ul>
-            <p id="forwardChatEmpty" class="empty-hint hidden">No chats match.</p>
         </div>
     </div>
 
@@ -491,6 +393,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=preview13"></script>
+    <script src="app.js"></script>
 </body>
 </html>

@@ -19,12 +19,9 @@ namespace NexusTeam.Server.Services
     /// </summary>
     public class MessageService : IMessageService
     {
-        private const int ReplyPreviewMaxLength = 200;
-
         private readonly IMessageRepository messageRepository;
         private readonly IChatRepository chatRepository;
         private readonly IMessageAttachmentRepository attachmentRepository;
-        private readonly IUserRepository userRepository;
         private readonly ICacheService cacheService;
         private readonly IIdGenerator idGenerator;
         private readonly IClock clock;
@@ -36,7 +33,6 @@ namespace NexusTeam.Server.Services
         /// <param name="messageRepository">Message repository.</param>
         /// <param name="chatRepository">Chat repository.</param>
         /// <param name="attachmentRepository">Attachment repository.</param>
-        /// <param name="userRepository">User repository.</param>
         /// <param name="cacheService">Cache service.</param>
         /// <param name="idGenerator">ID generator.</param>
         /// <param name="clock">System clock.</param>
@@ -45,7 +41,6 @@ namespace NexusTeam.Server.Services
             IMessageRepository messageRepository,
             IChatRepository chatRepository,
             IMessageAttachmentRepository attachmentRepository,
-            IUserRepository userRepository,
             ICacheService cacheService,
             IIdGenerator idGenerator,
             IClock clock,
@@ -54,7 +49,6 @@ namespace NexusTeam.Server.Services
             this.messageRepository = messageRepository;
             this.chatRepository = chatRepository;
             this.attachmentRepository = attachmentRepository;
-            this.userRepository = userRepository;
             this.cacheService = cacheService;
             this.idGenerator = idGenerator;
             this.clock = clock;
@@ -77,19 +71,6 @@ namespace NexusTeam.Server.Services
                 throw new ValidationException("User is not a participant in this chat");
             }
 
-            string? replyToId = null;
-            string? replyToSenderId = null;
-            string? replyToSenderName = null;
-            string? replyToContent = null;
-            if (!string.IsNullOrWhiteSpace(request.ReplyToId))
-            {
-                var replySnapshot = await this.BuildReplySnapshotAsync(request.ReplyToId, request.ChatId, cancellationToken);
-                replyToId = replySnapshot.ReplyToId;
-                replyToSenderId = replySnapshot.ReplyToSenderId;
-                replyToSenderName = replySnapshot.ReplyToSenderName;
-                replyToContent = replySnapshot.ReplyToContent;
-            }
-
             var message = new Message
             {
                 Id = this.idGenerator.GenerateId(),
@@ -98,10 +79,7 @@ namespace NexusTeam.Server.Services
                 Content = request.Content,
                 Status = MessageStatus.Sent,
                 CreatedAt = this.clock.UtcNow,
-                ReplyToId = replyToId,
-                ReplyToSenderId = replyToSenderId,
-                ReplyToSenderName = replyToSenderName,
-                ReplyToContent = replyToContent,
+                ReplyToId = request.ReplyToId,
                 IsDeleted = false,
             };
 
@@ -135,105 +113,6 @@ namespace NexusTeam.Server.Services
         }
 
         /// <inheritdoc/>
-        public async Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, string userId, CancellationToken cancellationToken = default)
-        {
-            this.logger.Information("Forwarding message {MessageId} to chat {ChatId} by user {UserId}", messageId, targetChatId, userId);
-
-            var source = await this.messageRepository.GetByIdAsync(messageId, cancellationToken);
-            if (source == null)
-            {
-                throw new ValidationException($"Message {messageId} not found");
-            }
-
-            if (source.IsDeleted)
-            {
-                throw new ValidationException("Cannot forward a deleted message");
-            }
-
-            if (source.IsSystem)
-            {
-                throw new ValidationException("Cannot forward a system message");
-            }
-
-            var sourceChat = await this.chatRepository.GetByIdAsync(source.ChatId, cancellationToken);
-            if (sourceChat == null || sourceChat.ParticipantIds == null || !sourceChat.ParticipantIds.Contains(userId))
-            {
-                throw new ValidationException("You do not have access to the original message");
-            }
-
-            var targetChat = await this.chatRepository.GetByIdAsync(targetChatId, cancellationToken);
-            if (targetChat == null)
-            {
-                throw new ValidationException($"Chat {targetChatId} not found");
-            }
-
-            if (targetChat.ParticipantIds == null || !targetChat.ParticipantIds.Contains(userId))
-            {
-                throw new ValidationException("User is not a participant in this chat");
-            }
-
-            var originalSenderId = source.IsForwarded && !string.IsNullOrWhiteSpace(source.ForwardedFromSenderId)
-                ? source.ForwardedFromSenderId
-                : source.SenderId;
-            var originalSenderName = source.IsForwarded && !string.IsNullOrWhiteSpace(source.ForwardedFromSenderName)
-                ? source.ForwardedFromSenderName
-                : await this.ResolveDisplayNameAsync(originalSenderId, cancellationToken);
-
-            var forwarded = new Message
-            {
-                Id = this.idGenerator.GenerateId(),
-                ChatId = targetChatId,
-                SenderId = userId,
-                Content = source.Content,
-                Status = MessageStatus.Sent,
-                CreatedAt = this.clock.UtcNow,
-                IsDeleted = false,
-                IsForwarded = true,
-                ForwardedFromSenderId = originalSenderId,
-                ForwardedFromSenderName = originalSenderName,
-            };
-
-            await this.messageRepository.CreateAsync(forwarded, cancellationToken);
-
-            var sourceAttachments = (await this.attachmentRepository.GetByMessageIdAsync(source.Id, cancellationToken) ?? new List<MessageAttachment>()).ToList();
-            var clonedAttachments = new List<MessageAttachment>();
-            foreach (var attachment in sourceAttachments)
-            {
-                var clone = new MessageAttachment
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    MessageId = forwarded.Id,
-                    FileName = attachment.FileName,
-                    FilePath = attachment.FilePath,
-                    ThumbnailPath = attachment.ThumbnailPath,
-                    FileSize = attachment.FileSize,
-                    ContentType = attachment.ContentType,
-                    AttachmentType = attachment.AttachmentType,
-                    UploadedAt = this.clock.UtcNow,
-                };
-
-                await this.attachmentRepository.AddAsync(clone, cancellationToken);
-                clonedAttachments.Add(clone);
-            }
-
-            forwarded.Attachments = clonedAttachments;
-
-            targetChat.LastMessageAt = forwarded.CreatedAt;
-            targetChat.UpdatedAt = forwarded.CreatedAt;
-            await this.chatRepository.UpdateAsync(targetChat, cancellationToken);
-            await this.InvalidateChatMessagesCache(targetChatId, cancellationToken);
-
-            this.logger.Information(
-                "Message {SourceMessageId} forwarded as {MessageId} to chat {ChatId} with {AttachmentCount} attachments",
-                source.Id,
-                forwarded.Id,
-                targetChatId,
-                clonedAttachments.Count);
-
-            return this.MapToDto(forwarded);
-        }
-
-        /// <inheritdoc/>
         public async Task<MessageDto> EditMessageAsync(string messageId, string newContent, string userId, CancellationToken cancellationToken = default)
         {
             this.logger.Information("Editing message {MessageId} by user {UserId}", messageId, userId);
@@ -252,11 +131,6 @@ namespace NexusTeam.Server.Services
             if (message.IsDeleted)
             {
                 throw new ValidationException("Cannot edit a deleted message");
-            }
-
-            if (message.IsSystem)
-            {
-                throw new ValidationException("Cannot edit a system message");
             }
 
             message.Content = newContent;
@@ -294,11 +168,6 @@ namespace NexusTeam.Server.Services
                 throw new ValidationException("Message is already deleted");
             }
 
-            if (message.IsSystem)
-            {
-                throw new ValidationException("Cannot delete a system message");
-            }
-
             var chatId = message.ChatId;
 
             try
@@ -326,19 +195,8 @@ namespace NexusTeam.Server.Services
         }
 
         /// <inheritdoc/>
-        public async Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default)
         {
-            var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
-            if (chat == null)
-            {
-                throw new NotFoundException($"Chat with ID '{chatId}' not found.");
-            }
-
-            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
-            {
-                throw new UnauthorizedException("You are not a participant of this chat.");
-            }
-
             var cacheKey = $"chat:messages:{chatId}:{limit}:{offset}";
             var cached = await this.cacheService.GetAsync<List<MessageDto>>(cacheKey, cancellationToken);
 
@@ -452,22 +310,6 @@ namespace NexusTeam.Server.Services
                 throw new ValidationException($"Message {messageId} not found");
             }
 
-            var chat = await this.chatRepository.GetByIdAsync(message.ChatId, cancellationToken);
-            if (chat == null)
-            {
-                throw new ValidationException($"Chat {message.ChatId} not found");
-            }
-
-            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
-            {
-                throw new UnauthorizedException("You are not a participant of this chat.");
-            }
-
-            if (message.IsSystem)
-            {
-                throw new ValidationException("Cannot react to a system message");
-            }
-
             // Initialize reactions dictionary if null
             if (message.Reactions == null)
             {
@@ -500,22 +342,6 @@ namespace NexusTeam.Server.Services
             if (message == null)
             {
                 throw new ValidationException($"Message {messageId} not found");
-            }
-
-            var chat = await this.chatRepository.GetByIdAsync(message.ChatId, cancellationToken);
-            if (chat == null)
-            {
-                throw new ValidationException($"Chat {message.ChatId} not found");
-            }
-
-            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
-            {
-                throw new UnauthorizedException("You are not a participant of this chat.");
-            }
-
-            if (message.IsSystem)
-            {
-                throw new ValidationException("Cannot react to a system message");
             }
 
             // Remove user from reaction list
@@ -566,14 +392,7 @@ namespace NexusTeam.Server.Services
                 CreatedAt = message.CreatedAt,
                 EditedAt = message.EditedAt,
                 ReplyToId = message.ReplyToId,
-                ReplyToSenderId = message.ReplyToSenderId,
-                ReplyToSenderName = message.ReplyToSenderName,
-                ReplyToContent = message.ReplyToContent,
-                IsForwarded = message.IsForwarded,
-                ForwardedFromSenderId = message.ForwardedFromSenderId,
-                ForwardedFromSenderName = message.ForwardedFromSenderName,
                 IsDeleted = message.IsDeleted,
-                IsSystem = message.IsSystem,
                 Attachments = message.Attachments?.Select(a => new MessageAttachmentDto
                 {
                     Id = a.Id,
@@ -590,86 +409,6 @@ namespace NexusTeam.Server.Services
                 }).ToList() ?? new List<MessageAttachmentDto>(),
                 Reactions = message.Reactions ?? new Dictionary<string, List<string>>(),
             };
-        }
-
-        private async Task<(string ReplyToId, string? ReplyToSenderId, string? ReplyToSenderName, string? ReplyToContent)> BuildReplySnapshotAsync(
-            string replyToId,
-            string chatId,
-            CancellationToken cancellationToken)
-        {
-            var parent = await this.messageRepository.GetByIdAsync(replyToId, cancellationToken);
-            if (parent == null)
-            {
-                throw new ValidationException("Message being replied to was not found");
-            }
-
-            if (!string.Equals(parent.ChatId, chatId, StringComparison.Ordinal))
-            {
-                throw new ValidationException("Cannot reply to a message from another chat");
-            }
-
-            if (parent.IsSystem)
-            {
-                throw new ValidationException("Cannot reply to a system message");
-            }
-
-            if (parent.IsDeleted)
-            {
-                throw new ValidationException("Cannot reply to a deleted message");
-            }
-
-            var preview = this.TruncatePreview(parent.Content, ReplyPreviewMaxLength);
-            if (string.IsNullOrWhiteSpace(preview))
-            {
-                var attachments = await this.attachmentRepository.GetByMessageIdAsync(parent.Id, cancellationToken);
-                if (attachments != null && attachments.Count > 0)
-                {
-                    preview = attachments[0].FileName;
-                }
-            }
-
-            return (
-                parent.Id,
-                parent.SenderId,
-                await this.ResolveDisplayNameAsync(parent.SenderId, cancellationToken),
-                preview);
-        }
-
-        private async Task<string> ResolveDisplayNameAsync(string userId, CancellationToken cancellationToken)
-        {
-            var user = await this.userRepository.GetByIdAsync(userId, cancellationToken);
-            if (user == null)
-            {
-                return userId;
-            }
-
-            if (!string.IsNullOrWhiteSpace(user.DisplayName))
-            {
-                return user.DisplayName;
-            }
-
-            if (!string.IsNullOrWhiteSpace(user.Username))
-            {
-                return user.Username;
-            }
-
-            return userId;
-        }
-
-        private string TruncatePreview(string? content, int maxLength)
-        {
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                return string.Empty;
-            }
-
-            var trimmed = content.Trim();
-            if (trimmed.Length <= maxLength)
-            {
-                return trimmed;
-            }
-
-            return trimmed.Substring(0, maxLength - 3) + "...";
         }
 
         private async Task InvalidateChatMessagesCache(string chatId, CancellationToken cancellationToken = default)

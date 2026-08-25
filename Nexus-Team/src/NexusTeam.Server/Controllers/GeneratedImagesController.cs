@@ -55,19 +55,8 @@ namespace NexusTeam.Server.Controllers
         [ProducesResponseType(404)]
         public async Task<IActionResult> GetImage(string id, CancellationToken cancellationToken = default)
         {
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
             var image = await this.generatedImageService.GetByIdAsync(id, cancellationToken);
             if (image == null)
-            {
-                return this.NotFound();
-            }
-
-            if (image.UserId != userId)
             {
                 return this.NotFound();
             }
@@ -116,18 +105,6 @@ namespace NexusTeam.Server.Controllers
         [ProducesResponseType(400)]
         public async Task<IActionResult> SaveImageData(string id, [FromBody] SaveImageDataRequest request, CancellationToken cancellationToken = default)
         {
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
-            var image = await this.generatedImageService.GetByIdAsync(id, cancellationToken);
-            if (image == null || image.UserId != userId)
-            {
-                return this.NotFound();
-            }
-
             try
             {
                 var imageData = System.Convert.FromBase64String(request.ImageDataBase64);
@@ -148,27 +125,9 @@ namespace NexusTeam.Server.Controllers
         /// <returns>The image file.</returns>
         [HttpGet("{id}/download")]
         [ProducesResponseType(200)]
-        [ProducesResponseType(401)]
         [ProducesResponseType(404)]
         public async Task<IActionResult> DownloadImage(string id, CancellationToken cancellationToken = default)
         {
-            var image = await this.generatedImageService.GetByIdAsync(id, cancellationToken);
-            if (image == null)
-            {
-                return this.NotFound();
-            }
-
-            var userId = this.HttpContext.Items["UserId"] as string;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return this.Unauthorized();
-            }
-
-            if (image.UserId != userId)
-            {
-                return this.NotFound();
-            }
-
             var result = await this.generatedImageService.GetImageStreamAsync(id, cancellationToken);
             if (result == null || result.Value.Stream == null)
             {

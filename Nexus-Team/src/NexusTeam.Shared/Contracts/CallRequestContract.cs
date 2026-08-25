@@ -33,6 +33,11 @@ namespace NexusTeam.Shared.Contracts
         public string? ChatId { get; set; }
 
         /// <summary>
+        /// Gets or sets the call type (audio or video).
+        /// </summary>
+        public NexusTeam.Shared.Enums.CallType CallType { get; set; } = NexusTeam.Shared.Enums.CallType.Audio;
+
+        /// <summary>
         /// Gets or sets the call request timestamp in ISO 8601 format.
         /// </summary>
         public DateTime Timestamp { get; set; }

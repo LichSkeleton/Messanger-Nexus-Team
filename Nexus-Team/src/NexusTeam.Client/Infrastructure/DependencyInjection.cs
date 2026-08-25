@@ -104,9 +104,6 @@ namespace NexusTeam.Client.Infrastructure
                 return new ImageCompressionService(logger);
             });
 
-            services.AddSingleton<IDocumentPreviewService, DocumentPreviewService>();
-            services.AddSingleton<IAttachmentPreviewService, AttachmentPreviewService>();
-
             // AvatarService with authenticated HttpClient
             services.AddHttpClient("AvatarClient", client =>
             {

@@ -28,13 +28,9 @@ namespace NexusTeam.Shared.Serialization
     [JsonSerializable(typeof(AuthenticateResponse))]
     [JsonSerializable(typeof(RegisterResponse))]
     [JsonSerializable(typeof(SendMessageRequest))]
-    [JsonSerializable(typeof(ForwardMessageRequest))]
     [JsonSerializable(typeof(EditMessageRequest))]
     [JsonSerializable(typeof(DeleteMessageRequest))]
     [JsonSerializable(typeof(DeleteMessageNotification))]
-    [JsonSerializable(typeof(ChatDeletedPayload))]
-    [JsonSerializable(typeof(TypingIndicatorPayload))]
-    [JsonSerializable(typeof(RateLimitErrorPayload))]
     [JsonSerializable(typeof(WebSocketMessageEnvelope))]
     [JsonSerializable(typeof(PaginatedResponse<UserDto>))]
     [JsonSerializable(typeof(PaginatedResponse<ChatDto>))]
@@ -55,6 +51,7 @@ namespace NexusTeam.Shared.Serialization
     [JsonSerializable(typeof(CallSdpAnswerContract))]
     [JsonSerializable(typeof(CallIceCandidateContract))]
     [JsonSerializable(typeof(CallAudioDataContract))]
+    [JsonSerializable(typeof(CallTimeoutContract))]
     public partial class NexusTeamJsonSerializerContext : JsonSerializerContext
     {
     }

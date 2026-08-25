@@ -19,10 +19,5 @@ namespace NexusTeam.Shared.Enums
         /// Public channel that users can join.
         /// </summary>
         Channel = 2,
-
-        /// <summary>
-        /// Personal Saved Messages chat (notes to self). Created automatically for every user.
-        /// </summary>
-        SavedMessages = 3,
     }
 }

@@ -20,7 +20,6 @@ namespace NexusTeam.Server.Extensions
             app.UseMiddleware<ExceptionHandlingMiddleware>();
             app.UseMiddleware<RequestLoggingMiddleware>();
             app.UseMiddleware<JwtAuthenticationMiddleware>();
-            app.UseMiddleware<DeviceLockMiddleware>();
             app.UseMiddleware<WebSocketHandler>();
 
             return app;

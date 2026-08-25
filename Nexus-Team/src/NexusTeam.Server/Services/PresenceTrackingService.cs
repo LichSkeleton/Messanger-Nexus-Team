@@ -8,12 +8,11 @@ namespace NexusTeam.Server.Services
     using Microsoft.Extensions.Hosting;
     using NexusTeam.Server.Data.Repositories;
     using NexusTeam.Server.Services.Abstractions;
-    using NexusTeam.Shared.Abstractions;
     using NexusTeam.Shared.Enums;
     using Serilog;
 
     /// <summary>
-    /// Background service that reconciles persisted presence with active WebSocket connections.
+    /// Background service for tracking user presence and status.
     /// </summary>
     public class PresenceTrackingService : BackgroundService
     {
@@ -49,21 +48,14 @@ namespace NexusTeam.Server.Services
                     await this.UpdateUserPresenceAsync(stoppingToken);
                     await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                catch (OperationCanceledException)
                 {
                     break;
                 }
                 catch (Exception ex)
                 {
                     this.logger.Error(ex, "Error updating user presence");
-                    try
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 }
             }
 
@@ -72,34 +64,15 @@ namespace NexusTeam.Server.Services
 
         private async Task UpdateUserPresenceAsync(CancellationToken cancellationToken)
         {
-            var connectedUserIds = this.connectionManager.GetConnectedUserIds().ToList();
-            this.logger.Debug("Reconciling presence for {Count} connected users", connectedUserIds.Count);
+            this.logger.Debug("Updating user presence");
 
-            using var scope = this.scopeFactory.CreateScope();
-            var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-            var userStatusService = scope.ServiceProvider.GetRequiredService<IUserStatusService>();
-            var clock = scope.ServiceProvider.GetRequiredService<IClock>();
-
-            foreach (var userId in connectedUserIds)
+            // Create a scope to get scoped services (like IUserRepository)
+            using (var scope = this.scopeFactory.CreateScope())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var user = await userRepository.GetByIdAsync(userId, cancellationToken);
-                if (user == null)
-                {
-                    continue;
-                }
-
-                user.LastSeenAt = clock.UtcNow;
-                await userRepository.UpdateAsync(user, cancellationToken);
-
-                var status = await userStatusService.GetStatusAsync(userId, cancellationToken);
-                if (status == UserStatus.Offline)
-                {
-                    // Connected sockets imply online unless the user explicitly chose Invisible.
-                    await userStatusService.SetStatusAsync(userId, UserStatus.Online, cancellationToken);
-                }
+                var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
             }
+
+            await Task.CompletedTask;
         }
     }
 }

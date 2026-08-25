@@ -7,7 +7,6 @@ namespace NexusTeam.Client.Views
     using System.Windows.Controls;
     using System.Windows.Controls.Primitives;
     using System.Windows.Documents;
-    using System.Windows.Input;
     using System.Windows.Media;
     using System.Windows.Media.Animation;
     using System.Windows.Media.Effects;
@@ -119,7 +118,6 @@ namespace NexusTeam.Client.Views
             MenuItem? editItem = null;
             MenuItem? leaveItem = null;
             MenuItem? addToFolderItem = null;
-            MenuItem? deleteItem = null;
 
             foreach (var item in menu.Items)
             {
@@ -137,10 +135,6 @@ namespace NexusTeam.Client.Views
                     {
                         addToFolderItem = mi;
                     }
-                    else if (mi.Tag as string == "DeleteChat")
-                    {
-                        deleteItem = mi;
-                    }
                 }
             }
 
@@ -154,11 +148,6 @@ namespace NexusTeam.Client.Views
             {
                 leaveItem.Visibility = conversation.IsGroup ? Visibility.Visible : Visibility.Collapsed;
                 leaveItem.Tag = conversation;
-            }
-
-            if (deleteItem != null)
-            {
-                deleteItem.Visibility = conversation.CanDeleteChat ? Visibility.Visible : Visibility.Collapsed;
             }
 
             if (addToFolderItem != null)
@@ -747,54 +736,6 @@ namespace NexusTeam.Client.Views
                 if (viewModel != null)
                 {
                     viewModel.CopyMessageCommand.Execute(message);
-                }
-            }
-        }
-
-        private void ReplyMessageMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is MenuItem menuItem && menuItem.Tag is MessageViewModel message)
-            {
-                var viewModel = this.DataContext as ChatViewModel;
-                viewModel?.ReplyToMessageCommand.Execute(message);
-            }
-        }
-
-        private void ForwardMessageMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is MenuItem menuItem && menuItem.Tag is MessageViewModel message)
-            {
-                var viewModel = this.DataContext as ChatViewModel;
-                if (viewModel != null && viewModel.ForwardMessageCommand.CanExecute(message))
-                {
-                    viewModel.ForwardMessageCommand.Execute(message);
-                }
-            }
-        }
-
-        private void ReplyQuote_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is FrameworkElement element && element.DataContext is MessageViewModel message
-                && !string.IsNullOrEmpty(message.ReplyToId))
-            {
-                this.ScrollToMessage(message.ReplyToId);
-            }
-        }
-
-        private void ScrollToMessage(string messageId)
-        {
-            if (this.MessagesItemsControl == null)
-            {
-                return;
-            }
-
-            foreach (var item in this.MessagesItemsControl.Items)
-            {
-                if (item is MessageViewModel message && message.Id == messageId)
-                {
-                    var container = this.MessagesItemsControl.ItemContainerGenerator.ContainerFromItem(item) as FrameworkElement;
-                    container?.BringIntoView();
-                    return;
                 }
             }
         }

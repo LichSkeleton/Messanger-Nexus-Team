@@ -72,12 +72,5 @@ namespace NexusTeam.Shared.Dtos
         /// </summary>
         [JsonPropertyName("lastMessageAt")]
         public DateTime? LastMessageAt { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether this chat is pinned for the current user.
-        /// Pin state is personal and never shared with other participants.
-        /// </summary>
-        [JsonPropertyName("isPinned")]
-        public bool IsPinned { get; set; }
     }
 }

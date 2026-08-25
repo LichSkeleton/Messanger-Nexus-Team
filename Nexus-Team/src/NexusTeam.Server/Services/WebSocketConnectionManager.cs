@@ -36,23 +36,8 @@ namespace NexusTeam.Server.Services
         /// <inheritdoc/>
         public void AddConnection(string userId, WebSocket socket, string connectionId)
         {
-            if (!this.connections.TryAdd(connectionId, socket))
-            {
-                this.logger.Warning(
-                    "Rejected duplicate WebSocket connection {ConnectionId} for user {UserId}",
-                    connectionId,
-                    userId);
-                return;
-            }
-
-            if (!this.connectionToUser.TryAdd(connectionId, userId))
-            {
-                this.connections.TryRemove(connectionId, out _);
-                this.logger.Warning(
-                    "Rejected WebSocket connection {ConnectionId} due to existing user mapping",
-                    connectionId);
-                return;
-            }
+            this.connections.TryAdd(connectionId, socket);
+            this.connectionToUser.TryAdd(connectionId, userId);
 
             this.userToConnections.AddOrUpdate(
                 userId,
@@ -118,12 +103,6 @@ namespace NexusTeam.Server.Services
         {
             this.connectionToUser.TryGetValue(connectionId, out var userId);
             return userId;
-        }
-
-        /// <inheritdoc/>
-        public IEnumerable<string> GetConnectedUserIds()
-        {
-            return this.connectionToUser.Values.Distinct().ToList();
         }
 
         /// <inheritdoc/>

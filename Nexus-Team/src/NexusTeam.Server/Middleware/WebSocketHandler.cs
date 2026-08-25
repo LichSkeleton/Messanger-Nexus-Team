@@ -6,6 +6,7 @@ namespace NexusTeam.Server.Middleware
     using System.Net.WebSockets;
     using System.Text;
     using System.Text.Json;
+    using System.Text.Json.Nodes;
     using System.Text.Json.Serialization;
     using System.Threading;
     using System.Threading.Tasks;
@@ -143,6 +144,7 @@ namespace NexusTeam.Server.Middleware
             var rateLimitService = context.RequestServices.GetRequiredService<IRateLimitService>();
             var chatService = context.RequestServices.GetRequiredService<IChatService>();
             var userStatusService = context.RequestServices.GetRequiredService<IUserStatusService>();
+            var callHistoryService = context.RequestServices.GetRequiredService<Services.Abstractions.ICallHistoryService>();
 
             WebSocketReceiveResult? receiveResult = null;
 
@@ -229,7 +231,7 @@ namespace NexusTeam.Server.Middleware
                             }
                             else if (userId != null && webSocket.State == WebSocketState.Open)
                             {
-                                await this.HandleMessageAsync(envelope, userId, connectionId!, sessionService, messageService, rateLimitService, chatService, userStatusService);
+                                await this.HandleMessageAsync(envelope, userId, connectionId!, sessionService, messageService, rateLimitService, chatService, userStatusService, callHistoryService);
                             }
                             else
                             {
@@ -440,22 +442,12 @@ namespace NexusTeam.Server.Middleware
                 }
 
                 this.logger.Information("Validating JWT token, length: {Length}", authPayload.Token.Length);
-                var identity = await this.jwtTokenService.ValidateIdentityAsync(authPayload.Token);
-                var userId = identity?.UserId;
+                var userId = await this.jwtTokenService.ValidateTokenAsync(authPayload.Token);
 
-                if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(identity?.DeviceId))
+                if (string.IsNullOrEmpty(userId))
                 {
-                    this.logger.Warning("Authentication failed: Token is not bound to a user device");
+                    this.logger.Warning("Authentication failed: Token validation returned null or empty userId");
                     await this.SendErrorAsync(webSocket, "Authentication failed");
-                    return null;
-                }
-
-                var deviceService = httpContext.RequestServices.GetRequiredService<IUserDeviceService>();
-                var accessState = await deviceService.GetAccessStateAsync(userId, identity.DeviceId, CancellationToken.None);
-                if (accessState != DeviceAccessState.Allowed)
-                {
-                    this.logger.Warning("WebSocket authentication rejected for device {DeviceId}: {AccessState}", identity.DeviceId, accessState);
-                    await this.SendErrorAsync(webSocket, accessState == DeviceAccessState.Locked ? "DEVICE_LOCKED" : "DEVICE_SESSION_INVALID");
                     return null;
                 }
 
@@ -519,7 +511,8 @@ namespace NexusTeam.Server.Middleware
             IMessageService messageService,
             IRateLimitService rateLimitService,
             IChatService chatService,
-            IUserStatusService userStatusService)
+            IUserStatusService userStatusService,
+            Services.Abstractions.ICallHistoryService callHistoryService)
         {
             switch (envelope.Type)
             {
@@ -550,7 +543,8 @@ namespace NexusTeam.Server.Middleware
                 case NexusTeam.Shared.Enums.WebSocketMessageType.CallSdpAnswer:
                 case NexusTeam.Shared.Enums.WebSocketMessageType.CallIceCandidate:
                 case NexusTeam.Shared.Enums.WebSocketMessageType.CallAudioData:
-                    await this.HandleCallMessageAsync(envelope, userId);
+                case NexusTeam.Shared.Enums.WebSocketMessageType.CallTimeout:
+                    await this.HandleCallMessageAsync(envelope, userId, rateLimitService, chatService, callHistoryService);
                     break;
 
                 default:
@@ -578,15 +572,10 @@ namespace NexusTeam.Server.Middleware
             if (!isAllowed)
             {
                 this.logger.Warning("Rate limit exceeded for message send: {UserId}", userId);
-                var errorPayload = new RateLimitErrorPayload
-                {
-                    Error = "Rate limit exceeded",
-                    Message = "Too many messages sent. Please slow down.",
-                };
                 var errorResponse = new WebSocketMessageEnvelope
                 {
                     Type = NexusTeam.Shared.Enums.WebSocketMessageType.Error,
-                    Payload = JsonSerializer.SerializeToElement(errorPayload, options),
+                    Payload = JsonSerializer.SerializeToElement(new { Error = "Rate limit exceeded", Message = "Too many messages sent. Please slow down." }, options),
                 };
                 var errorJson = JsonSerializer.Serialize(errorResponse, options);
                 await this.connectionManager.BroadcastToUserAsync(userId, errorJson, CancellationToken.None);
@@ -852,7 +841,12 @@ namespace NexusTeam.Server.Middleware
             }
         }
 
-        private async Task HandleCallMessageAsync(WebSocketMessageEnvelope envelope, string fromUserId)
+        private async Task HandleCallMessageAsync(
+            WebSocketMessageEnvelope envelope,
+            string fromUserId,
+            IRateLimitService rateLimitService,
+            IChatService chatService,
+            Services.Abstractions.ICallHistoryService callHistoryService)
         {
             this.logger.Information("HandleCallMessageAsync called: Type={Type}, FromUserId={FromUserId}", envelope.Type, fromUserId);
 
@@ -864,46 +858,82 @@ namespace NexusTeam.Server.Middleware
 
             try
             {
-                // Extract ToUserId from payload based on message type
-                string? toUserId = null;
+                if (envelope.Type == NexusTeam.Shared.Enums.WebSocketMessageType.CallRequest)
+                {
+                    var isAllowed = await rateLimitService.IsMessageSendAllowedAsync(fromUserId, CancellationToken.None);
+                    if (!isAllowed)
+                    {
+                        this.logger.Warning("Call request rate limit exceeded for user {UserId}", fromUserId);
+                        await this.SendErrorToUserAsync(fromUserId, "Call rate limit exceeded. Please wait before trying again.");
+                        return;
+                    }
+                }
 
-                // Try to deserialize as any call contract to get ToUserId
                 var payloadText = envelope.Payload.Value.GetRawText();
                 this.logger.Debug("Call message payload: {Payload}", payloadText);
 
                 using var doc = JsonDocument.Parse(payloadText);
                 var root = doc.RootElement;
 
-                // All call contracts have ToUserId field (camelCase in JSON)
-                if (root.TryGetProperty("toUserId", out var toUserIdElement))
+                if (!root.TryGetProperty("toUserId", out var toUserIdElement))
                 {
-                    toUserId = toUserIdElement.GetString();
-                    this.logger.Information("Extracted ToUserId from payload: {ToUserId}", toUserId);
-                }
-                else
-                {
-                    this.logger.Warning("Payload does not contain 'toUserId' property. Available properties: {Properties}", string.Join(", ", root.EnumerateObject().Select(p => p.Name)));
-                }
-
-                if (string.IsNullOrEmpty(toUserId))
-                {
-                    this.logger.Warning("Call message received without ToUserId from user {UserId}", fromUserId);
+                    this.logger.Warning("Call payload from {UserId} is missing toUserId", fromUserId);
                     return;
                 }
 
-                // Check if recipient has active connections
+                var toUserId = toUserIdElement.GetString();
+                if (string.IsNullOrEmpty(toUserId))
+                {
+                    this.logger.Warning("Call message received with empty toUserId from user {UserId}", fromUserId);
+                    return;
+                }
+
+                string? chatId = null;
+                if (root.TryGetProperty("chatId", out var chatIdElement))
+                {
+                    chatId = chatIdElement.GetString();
+                }
+
+                if (!await this.IsValidCallTargetAsync(fromUserId, toUserId, chatId, chatService))
+                {
+                    this.logger.Warning("Invalid call target from {FromUserId} to {ToUserId}", fromUserId, toUserId);
+                    await this.SendErrorToUserAsync(fromUserId, "You can only call a chat participant with an active direct conversation.");
+                    return;
+                }
+
                 var connectionIds = this.connectionManager.GetConnectionIdsByUserId(toUserId);
                 this.logger.Information("Recipient {ToUserId} has {Count} active connection(s)", toUserId, connectionIds.Count());
-
                 if (!connectionIds.Any())
                 {
                     this.logger.Warning("Recipient {ToUserId} has no active connections, cannot forward call message", toUserId);
+                    await this.SendErrorToUserAsync(fromUserId, "Recipient is not available for calls.");
+
+                    // Record a missed call so the callee sees it as soon as they come back online.
+                    if (envelope.Type == NexusTeam.Shared.Enums.WebSocketMessageType.CallRequest)
+                    {
+                        var callId = root.TryGetProperty("callId", out var callIdElement) ? callIdElement.GetString() ?? string.Empty : string.Empty;
+                        var callType = root.TryGetProperty("callType", out var callTypeElement) ? callTypeElement.GetString() ?? "Audio" : "Audio";
+                        if (!string.IsNullOrEmpty(callId))
+                        {
+                            await callHistoryService.RecordMissedAsync(callId, chatId ?? string.Empty, fromUserId, toUserId, callType, CancellationToken.None);
+                        }
+                    }
+
                     return;
                 }
 
-                // Forward the message to the recipient
                 var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
-                var message = JsonSerializer.Serialize(envelope, options);
+                var jsonNode = JsonNode.Parse(payloadText) as JsonObject ?? new JsonObject();
+                jsonNode["fromUserId"] = fromUserId;
+                jsonNode["toUserId"] = toUserId;
+
+                var forwardEnvelope = new WebSocketMessageEnvelope
+                {
+                    Type = envelope.Type,
+                    Payload = JsonSerializer.SerializeToElement(jsonNode, options),
+                };
+
+                var message = JsonSerializer.Serialize(forwardEnvelope, options);
                 await this.connectionManager.BroadcastToUserAsync(toUserId, message, CancellationToken.None);
 
                 this.logger.Information(
@@ -919,6 +949,62 @@ namespace NexusTeam.Server.Middleware
             catch (Exception ex)
             {
                 this.logger.Error(ex, "Failed to handle call message from user {UserId}", fromUserId);
+            }
+        }
+
+        private async Task<bool> IsValidCallTargetAsync(
+            string fromUserId,
+            string toUserId,
+            string? chatId,
+            IChatService chatService)
+        {
+            if (string.IsNullOrWhiteSpace(fromUserId) || string.IsNullOrWhiteSpace(toUserId))
+            {
+                return false;
+            }
+
+            if (fromUserId == toUserId)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(chatId))
+            {
+                var chat = await chatService.GetChatByIdAsync(chatId, fromUserId, CancellationToken.None);
+                if (chat == null)
+                {
+                    return false;
+                }
+
+                var participants = chat.ParticipantIds ?? new List<string>();
+                if (participants.Count != 2 || !participants.Contains(fromUserId) || !participants.Contains(toUserId))
+                {
+                    return false;
+                }
+
+                return true;
+            }
+
+            var chats = await chatService.GetUserChatsAsync(fromUserId, CancellationToken.None);
+            return chats.Any(chat => chat.ParticipantIds.Count == 2 && chat.ParticipantIds.Contains(toUserId));
+        }
+
+        private async Task SendErrorToUserAsync(string userId, string error)
+        {
+            try
+            {
+                var options = NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket;
+                var envelope = new WebSocketMessageEnvelope
+                {
+                    Type = NexusTeam.Shared.Enums.WebSocketMessageType.Error,
+                    Error = error,
+                };
+                var message = JsonSerializer.Serialize(envelope, options);
+                await this.connectionManager.BroadcastToUserAsync(userId, message, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                this.logger.Error(ex, "Failed to send error to user {UserId}", userId);
             }
         }
 

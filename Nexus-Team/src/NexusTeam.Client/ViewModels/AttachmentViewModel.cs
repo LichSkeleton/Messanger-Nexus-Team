@@ -159,11 +159,6 @@ namespace NexusTeam.Client.ViewModels
         public bool IsCodeFile => this.attachmentType == AttachmentType.Code;
 
         /// <summary>
-        /// Gets a value indicating whether this attachment can be previewed in the app.
-        /// </summary>
-        public bool CanPreview => this.AttachmentDto != null && FileHelper.IsPreviewableFile(this.fileName);
-
-        /// <summary>
         /// Gets or sets the thumbnail image for preview.
         /// </summary>
         public BitmapImage? ThumbnailImage

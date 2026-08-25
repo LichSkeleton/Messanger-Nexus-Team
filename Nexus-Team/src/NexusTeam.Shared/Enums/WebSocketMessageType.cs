@@ -116,6 +116,11 @@ namespace NexusTeam.Shared.Enums
         CallAudioData = 21,
 
         /// <summary>
+        /// Call timeout notification.
+        /// </summary>
+        CallTimeout = 24,
+
+        /// <summary>
         /// New chat created notification.
         /// </summary>
         ChatCreated = 22,

@@ -35,12 +35,6 @@ namespace NexusTeam.Shared.Dtos
         /// <summary>
         /// Gets or sets muted chat IDs.
         /// </summary>
-        public List<string>? MutedChats { get; set; }
-
-        /// <summary>
-        /// Gets or sets pinned chat IDs, in display order (first item is shown at the top).
-        /// Omitted on update means keep the stored pins.
-        /// </summary>
-        public List<string>? PinnedChats { get; set; }
+        public List<string> MutedChats { get; set; } = new List<string>();
     }
 }

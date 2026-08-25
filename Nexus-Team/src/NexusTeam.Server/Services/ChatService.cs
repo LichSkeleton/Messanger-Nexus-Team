@@ -24,7 +24,6 @@ namespace NexusTeam.Server.Services
         private readonly IMessageRepository messageRepository;
         private readonly IMessageAttachmentRepository attachmentRepository;
         private readonly IChatFolderRepository folderRepository;
-        private readonly IUserPreferenceRepository preferenceRepository;
         private readonly IIdGenerator idGenerator;
         private readonly IClock clock;
         private readonly ILogger logger;
@@ -40,7 +39,6 @@ namespace NexusTeam.Server.Services
         /// <param name="messageRepository">Message repository.</param>
         /// <param name="attachmentRepository">Attachment repository.</param>
         /// <param name="folderRepository">Folder repository.</param>
-        /// <param name="preferenceRepository">User preference repository (pinned chats).</param>
         /// <param name="idGenerator">ID generator.</param>
         /// <param name="clock">Clock for timestamps.</param>
         /// <param name="logger">Logger.</param>
@@ -52,7 +50,6 @@ namespace NexusTeam.Server.Services
             IMessageRepository messageRepository,
             IMessageAttachmentRepository attachmentRepository,
             IChatFolderRepository folderRepository,
-            IUserPreferenceRepository preferenceRepository,
             IIdGenerator idGenerator,
             IClock clock,
             ILogger logger,
@@ -64,7 +61,6 @@ namespace NexusTeam.Server.Services
             this.messageRepository = messageRepository;
             this.attachmentRepository = attachmentRepository;
             this.folderRepository = folderRepository;
-            this.preferenceRepository = preferenceRepository;
             this.idGenerator = idGenerator;
             this.clock = clock;
             this.logger = logger;
@@ -82,51 +78,45 @@ namespace NexusTeam.Server.Services
         public async Task<IEnumerable<ChatDto>> GetUserChatsAsync(string userId, CancellationToken cancellationToken = default)
         {
             this.logger.Information("Getting chats for user {UserId}", userId);
-            var chats = (await this.chatRepository.GetByUserIdAsync(userId, cancellationToken)).ToList();
-
-            if (!chats.Any(this.IsSavedMessagesChat))
-            {
-                try
-                {
-                    chats.Add(await this.CreateSavedMessagesChatAsync(userId, cancellationToken));
-                }
-                catch (Exception ex)
-                {
-                    this.logger.Warning(ex, "Could not create Saved Messages for user {UserId}", userId);
-                    var existing = await this.chatRepository.GetByIdAsync("saved-" + userId, cancellationToken);
-                    if (existing != null && !chats.Any(chat => chat.Id == existing.Id))
-                    {
-                        chats.Add(existing);
-                    }
-                }
-            }
-
-            List<string> pinnedIds;
-            try
-            {
-                pinnedIds = await this.GetPinnedChatIdsAsync(userId, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                this.logger.Warning(ex, "Could not load pinned chats for user {UserId}", userId);
-                pinnedIds = new List<string>();
-            }
-
+            var chats = await this.chatRepository.GetByUserIdAsync(userId, cancellationToken);
             var chatDtos = new List<ChatDto>();
 
             foreach (var chat in chats)
             {
-                try
+                var chatDto = this.MapToDto(chat);
+
+                // Populate participant details for all chat types
+                if (chat.ParticipantIds.Any())
                 {
-                    chatDtos.Add(await this.BuildChatDtoAsync(chat, userId, pinnedIds, cancellationToken));
+                    var participants = new List<UserDto>();
+                    foreach (var participantId in chat.ParticipantIds)
+                    {
+                        var user = await this.userRepository.GetByIdAsync(participantId, cancellationToken);
+                        if (user != null)
+                        {
+                            participants.Add(await this.MapUserToDtoAsync(user, cancellationToken));
+                        }
+                    }
+
+                    chatDto.Participants = participants;
+
+                    // For direct messages, set the chat name to the other participant's display name (or username)
+                    if (chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
+                    {
+                        var otherParticipant = participants.FirstOrDefault(p => p.Id != userId);
+                        if (otherParticipant != null)
+                        {
+                            chatDto.Name = !string.IsNullOrWhiteSpace(otherParticipant.DisplayName)
+                                ? otherParticipant.DisplayName
+                                : otherParticipant.Username;
+                        }
+                    }
                 }
-                catch (Exception ex)
-                {
-                    this.logger.Warning(ex, "Could not map chat {ChatId} for user {UserId}", chat.Id, userId);
-                }
+
+                chatDtos.Add(chatDto);
             }
 
-            return this.SortChats(chatDtos);
+            return chatDtos;
         }
 
         /// <inheritdoc/>
@@ -139,36 +129,43 @@ namespace NexusTeam.Server.Services
                 return null;
             }
 
-            // Internal system callers bypass membership; API callers must be participants.
-            if (!string.Equals(userId, "system", StringComparison.Ordinal)
-                && (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId)))
+            var chatDto = this.MapToDto(chat);
+
+            // Populate participant details for all chat types
+            if (chat.ParticipantIds.Any())
             {
-                this.logger.Warning("User {UserId} is not a participant of chat {ChatId}", userId, chatId);
-                return null;
+                var participants = new List<UserDto>();
+                foreach (var participantId in chat.ParticipantIds)
+                {
+                    var user = await this.userRepository.GetByIdAsync(participantId, cancellationToken);
+                    if (user != null)
+                    {
+                        participants.Add(await this.MapUserToDtoAsync(user, cancellationToken));
+                    }
+                }
+
+                chatDto.Participants = participants;
+
+                // For direct messages, set the chat name to the other participant's display name (or username)
+                if (chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
+                {
+                    var otherParticipant = participants.FirstOrDefault(p => p.Id != userId);
+                    if (otherParticipant != null)
+                    {
+                        chatDto.Name = !string.IsNullOrWhiteSpace(otherParticipant.DisplayName)
+                            ? otherParticipant.DisplayName
+                            : otherParticipant.Username;
+                    }
+                }
             }
 
-            var pinnedIds = new List<string>();
-            try
-            {
-                pinnedIds = await this.GetPinnedChatIdsAsync(userId, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                this.logger.Warning(ex, "Could not load pinned chats for chat {ChatId}", chatId);
-            }
-
-            return await this.BuildChatDtoAsync(chat, userId, pinnedIds, cancellationToken);
+            return chatDto;
         }
 
         /// <inheritdoc/>
         public async Task<ChatDto> CreateChatAsync(CreateChatRequest request, string creatorUserId, CancellationToken cancellationToken = default)
         {
             this.logger.Information("Creating chat {ChatName} for user {UserId}", request.Name, creatorUserId);
-
-            if (request.Type == NexusTeam.Shared.Enums.ChatType.SavedMessages)
-            {
-                throw new ValidationException("Saved Messages chats are created automatically.");
-            }
 
             // Check for duplicate chat name for this user
             var nameExists = await this.chatRepository.ChatNameExistsForUserAsync(request.Name, creatorUserId, cancellationToken);
@@ -233,7 +230,7 @@ namespace NexusTeam.Server.Services
         }
 
         /// <inheritdoc/>
-        public async Task<ChatMembershipChangeResult> LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default)
+        public async Task LeaveChatAsync(string chatId, string userId, CancellationToken cancellationToken = default)
         {
             this.logger.Information("User {UserId} leaving chat {ChatId}", userId, chatId);
 
@@ -241,11 +238,6 @@ namespace NexusTeam.Server.Services
             if (chat == null)
             {
                 throw new NotFoundException($"Chat with ID '{chatId}' not found.");
-            }
-
-            if (this.IsSavedMessagesChat(chat))
-            {
-                throw new ValidationException("Cannot leave Saved Messages.");
             }
 
             if (chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
@@ -272,14 +264,8 @@ namespace NexusTeam.Server.Services
                     userId,
                     chatId);
                 await this.DeleteChatAsync(chatId, userId, cancellationToken);
-                return new ChatMembershipChangeResult
-                {
-                    ChatDeleted = true,
-                    RemovedUserId = userId,
-                };
+                return;
             }
-
-            var displayName = await this.ResolveDisplayNameAsync(userId, cancellationToken);
 
             await this.chatRepository.RemoveParticipantAsync(chatId, userId, cancellationToken);
 
@@ -294,11 +280,7 @@ namespace NexusTeam.Server.Services
 
                 await this.folderRepository.RemoveChatFromUserFoldersAsync(chatId, userId, cancellationToken);
                 this.logger.Information("User {UserId} left empty chat {ChatId}; chat deleted", userId, chatId);
-                return new ChatMembershipChangeResult
-                {
-                    ChatDeleted = true,
-                    RemovedUserId = userId,
-                };
+                return;
             }
 
             // Transfer ownership if the owner left
@@ -316,128 +298,7 @@ namespace NexusTeam.Server.Services
             // Remove from this user's personal folders
             await this.folderRepository.RemoveChatFromUserFoldersAsync(chatId, userId, cancellationToken);
 
-            var systemMessage = await this.CreateSystemMessageAsync(
-                chatId,
-                userId,
-                $"{displayName} left the group",
-                cancellationToken);
-
             this.logger.Information("User {UserId} left chat {ChatId}", userId, chatId);
-
-            return new ChatMembershipChangeResult
-            {
-                Chat = await this.GetChatByIdAsync(chatId, refreshed.ParticipantIds[0], cancellationToken),
-                SystemMessages = new List<MessageDto> { systemMessage },
-                RemovedUserId = userId,
-            };
-        }
-
-        /// <inheritdoc/>
-        public async Task<ChatMembershipChangeResult> AddParticipantsAsync(
-            string chatId,
-            string ownerUserId,
-            IReadOnlyList<string> userIds,
-            CancellationToken cancellationToken = default)
-        {
-            var chat = await this.RequireOwnedGroupAsync(chatId, ownerUserId, cancellationToken);
-
-            var uniqueIds = userIds
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-
-            if (uniqueIds.Count == 0)
-            {
-                throw new ValidationException("Select at least one user to add.");
-            }
-
-            var addedIds = new List<string>();
-            var systemMessages = new List<MessageDto>();
-
-            foreach (var userId in uniqueIds)
-            {
-                if (chat.ParticipantIds.Contains(userId))
-                {
-                    throw new ValidationException("One or more selected users are already in the group.");
-                }
-
-                var user = await this.userRepository.GetByIdAsync(userId, cancellationToken);
-                if (user == null)
-                {
-                    throw new ValidationException($"User with ID '{userId}' does not exist.");
-                }
-
-                await this.chatRepository.AddParticipantAsync(chatId, userId, cancellationToken);
-                if (!chat.ParticipantIds.Contains(userId))
-                {
-                    chat.ParticipantIds.Add(userId);
-                }
-
-                addedIds.Add(userId);
-
-                systemMessages.Add(await this.CreateSystemMessageAsync(
-                    chatId,
-                    ownerUserId,
-                    $"{this.GetUserDisplayName(user)} was added to the group",
-                    cancellationToken));
-            }
-
-            this.logger.Information(
-                "Owner {OwnerId} added {Count} members to chat {ChatId}",
-                ownerUserId,
-                addedIds.Count,
-                chatId);
-
-            return new ChatMembershipChangeResult
-            {
-                Chat = await this.GetChatByIdAsync(chatId, ownerUserId, cancellationToken),
-                SystemMessages = systemMessages,
-                AddedUserIds = addedIds,
-            };
-        }
-
-        /// <inheritdoc/>
-        public async Task<ChatMembershipChangeResult> RemoveParticipantAsync(
-            string chatId,
-            string ownerUserId,
-            string targetUserId,
-            CancellationToken cancellationToken = default)
-        {
-            var chat = await this.RequireOwnedGroupAsync(chatId, ownerUserId, cancellationToken);
-
-            if (string.Equals(ownerUserId, targetUserId, StringComparison.Ordinal))
-            {
-                throw new ValidationException("Leave the group instead of removing yourself.");
-            }
-
-            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(targetUserId))
-            {
-                throw new NotFoundException("That user is not a member of this group.");
-            }
-
-            var displayName = await this.ResolveDisplayNameAsync(targetUserId, cancellationToken);
-
-            await this.chatRepository.RemoveParticipantAsync(chatId, targetUserId, cancellationToken);
-            await this.folderRepository.RemoveChatFromUserFoldersAsync(chatId, targetUserId, cancellationToken);
-
-            var systemMessage = await this.CreateSystemMessageAsync(
-                chatId,
-                ownerUserId,
-                $"{displayName} was removed from the group",
-                cancellationToken);
-
-            this.logger.Information(
-                "Owner {OwnerId} removed {TargetId} from chat {ChatId}",
-                ownerUserId,
-                targetUserId,
-                chatId);
-
-            return new ChatMembershipChangeResult
-            {
-                Chat = await this.GetChatByIdAsync(chatId, ownerUserId, cancellationToken),
-                SystemMessages = new List<MessageDto> { systemMessage },
-                RemovedUserId = targetUserId,
-            };
         }
 
         /// <inheritdoc/>
@@ -455,8 +316,7 @@ namespace NexusTeam.Server.Services
                 throw new NotFoundException($"Chat with ID '{chatId}' not found.");
             }
 
-            if (chat.Type == NexusTeam.Shared.Enums.ChatType.SavedMessages
-                || chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
+            if (chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
             {
                 throw new ValidationException("Cannot update a direct message chat.");
             }
@@ -507,8 +367,7 @@ namespace NexusTeam.Server.Services
                 throw new NotFoundException($"Chat with ID '{chatId}' not found.");
             }
 
-            if (chat.Type == NexusTeam.Shared.Enums.ChatType.SavedMessages
-                || chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
+            if (chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
             {
                 throw new ValidationException("Cannot set avatar on a direct message.");
             }
@@ -533,64 +392,6 @@ namespace NexusTeam.Server.Services
         }
 
         /// <inheritdoc/>
-        public async Task<ChatDto> SetChatPinnedAsync(
-            string chatId,
-            string userId,
-            bool pinned,
-            CancellationToken cancellationToken = default)
-        {
-            var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
-            if (chat == null)
-            {
-                throw new NotFoundException($"Chat with ID '{chatId}' not found.");
-            }
-
-            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(userId))
-            {
-                throw new UnauthorizedException("You are not a participant of this chat.");
-            }
-
-            var existing = await this.preferenceRepository.GetByUserIdAsync(userId, cancellationToken);
-            var isNew = existing == null;
-            var preference = existing ?? new NexusTeam.Server.Data.Models.UserPreference
-            {
-                UserId = userId,
-                NotificationsEnabled = true,
-                SoundEnabled = true,
-                Theme = "light",
-                Language = "en",
-                PinnedChats = new List<string>(),
-                CreatedAt = this.clock.UtcNow,
-            };
-
-            preference.PinnedChats ??= new List<string>();
-            preference.PinnedChats.RemoveAll(id => id == chatId);
-
-            if (pinned)
-            {
-                if (preference.PinnedChats.Count >= 100)
-                {
-                    throw new ValidationException("Pinned chats list cannot exceed 100 items.");
-                }
-
-                preference.PinnedChats.Insert(0, chatId);
-            }
-
-            preference.UpdatedAt = this.clock.UtcNow;
-            if (isNew)
-            {
-                await this.preferenceRepository.CreateAsync(preference, cancellationToken);
-            }
-            else
-            {
-                await this.preferenceRepository.UpdateAsync(preference, cancellationToken);
-            }
-
-            return await this.GetChatByIdAsync(chatId, userId, cancellationToken)
-                ?? throw new DomainException("Failed to load pinned chat.");
-        }
-
-        /// <inheritdoc/>
         public async Task DeleteChatAsync(string chatId, string userId, CancellationToken cancellationToken = default)
         {
             this.logger.Information("User {UserId} requesting deletion of chat {ChatId}", userId, chatId);
@@ -603,23 +404,11 @@ namespace NexusTeam.Server.Services
                 throw new NotFoundException($"Chat with ID '{chatId}' not found.");
             }
 
-            if (this.IsSavedMessagesChat(chat))
-            {
-                throw new ValidationException("Saved Messages cannot be deleted.");
-            }
-
             // Verify user is a participant of the chat
             if (!chat.ParticipantIds.Contains(userId))
             {
                 this.logger.Warning("User {UserId} is not a participant of chat {ChatId}", userId, chatId);
                 throw new UnauthorizedException("You are not a participant of this chat.");
-            }
-
-            // Groups/channels: only the owner may delete the entire chat
-            if (chat.Type != NexusTeam.Shared.Enums.ChatType.DirectMessage && chat.CreatedBy != userId)
-            {
-                this.logger.Warning("User {UserId} attempted to delete chat {ChatId} without ownership", userId, chatId);
-                throw new UnauthorizedException("Only the group owner can delete the entire group.");
             }
 
             try
@@ -722,91 +511,9 @@ namespace NexusTeam.Server.Services
             }
         }
 
-        private async Task<Chat> RequireOwnedGroupAsync(
-            string chatId,
-            string ownerUserId,
-            CancellationToken cancellationToken)
+        private ChatDto MapToDto(Chat chat)
         {
-            var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
-            if (chat == null)
-            {
-                throw new NotFoundException($"Chat with ID '{chatId}' not found.");
-            }
-
-            if (chat.Type == NexusTeam.Shared.Enums.ChatType.SavedMessages
-                || chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage)
-            {
-                throw new ValidationException("Members can only be managed in a group chat.");
-            }
-
-            if (chat.ParticipantIds == null || !chat.ParticipantIds.Contains(ownerUserId))
-            {
-                throw new UnauthorizedException("You are not a participant of this chat.");
-            }
-
-            if (chat.CreatedBy != ownerUserId)
-            {
-                throw new UnauthorizedException("Only the group owner can add or remove members.");
-            }
-
-            return chat;
-        }
-
-        private async Task<MessageDto> CreateSystemMessageAsync(
-            string chatId,
-            string actorUserId,
-            string content,
-            CancellationToken cancellationToken)
-        {
-            var now = this.clock.UtcNow;
-            var message = new Message
-            {
-                Id = this.idGenerator.GenerateId(),
-                ChatId = chatId,
-                SenderId = actorUserId,
-                Content = content,
-                Status = NexusTeam.Shared.Enums.MessageStatus.Sent,
-                CreatedAt = now,
-                IsDeleted = false,
-                IsSystem = true,
-            };
-
-            await this.messageRepository.CreateAsync(message, cancellationToken);
-
-            var chat = await this.chatRepository.GetByIdAsync(chatId, cancellationToken);
-            if (chat != null)
-            {
-                chat.LastMessageAt = now;
-                chat.UpdatedAt = now;
-                await this.chatRepository.UpdateAsync(chat, cancellationToken);
-            }
-
-            return new MessageDto
-            {
-                Id = message.Id,
-                ChatId = message.ChatId,
-                SenderId = message.SenderId,
-                Content = message.Content,
-                Status = message.Status,
-                CreatedAt = message.CreatedAt,
-                IsSystem = true,
-            };
-        }
-
-        private async Task<string> ResolveDisplayNameAsync(string userId, CancellationToken cancellationToken)
-        {
-            var user = await this.userRepository.GetByIdAsync(userId, cancellationToken);
-            return user == null ? "A member" : this.GetUserDisplayName(user);
-        }
-
-        private string GetUserDisplayName(User user)
-        {
-            return !string.IsNullOrWhiteSpace(user.DisplayName) ? user.DisplayName : user.Username;
-        }
-
-        private ChatDto MapToDto(Chat chat, bool isPinned = false)
-        {
-            var chatDto = new ChatDto
+            return new ChatDto
             {
                 Id = chat.Id,
                 Type = chat.Type,
@@ -818,118 +525,7 @@ namespace NexusTeam.Server.Services
                 CreatedBy = chat.CreatedBy,
                 CreatedAt = chat.CreatedAt,
                 LastMessageAt = chat.LastMessageAt,
-                IsPinned = isPinned,
             };
-
-            this.ApplyDefaultGroupAvatar(chatDto);
-            return chatDto;
-        }
-
-        private void ApplyDefaultGroupAvatar(ChatDto chatDto)
-        {
-            if (chatDto.Type != NexusTeam.Shared.Enums.ChatType.Group
-                && chatDto.Type != NexusTeam.Shared.Enums.ChatType.Channel)
-            {
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(chatDto.AvatarUrl))
-            {
-                chatDto.AvatarUrl = $"/api/users/avatar/chat_{chatDto.Id}";
-            }
-        }
-
-        private async Task<ChatDto> BuildChatDtoAsync(
-            Chat chat,
-            string userId,
-            IReadOnlyCollection<string> pinnedIds,
-            CancellationToken cancellationToken)
-        {
-            var chatDto = this.MapToDto(chat, pinnedIds.Contains(chat.Id));
-
-            if (this.IsSavedMessagesChat(chat))
-            {
-                chatDto.Name = "Saved Messages";
-            }
-
-            if (chat.ParticipantIds != null && chat.ParticipantIds.Any())
-            {
-                var participants = new List<UserDto>();
-                foreach (var participantId in chat.ParticipantIds)
-                {
-                    var user = await this.userRepository.GetByIdAsync(participantId, cancellationToken);
-                    if (user != null)
-                    {
-                        participants.Add(await this.MapUserToDtoAsync(user, cancellationToken));
-                    }
-                }
-
-                chatDto.Participants = participants;
-
-                if (chat.Type == NexusTeam.Shared.Enums.ChatType.DirectMessage && !this.IsSavedMessagesChat(chat))
-                {
-                    var otherParticipant = participants.FirstOrDefault(p => p.Id != userId);
-                    if (otherParticipant != null)
-                    {
-                        chatDto.Name = !string.IsNullOrWhiteSpace(otherParticipant.DisplayName)
-                            ? otherParticipant.DisplayName
-                            : otherParticipant.Username;
-                    }
-                }
-            }
-
-            return chatDto;
-        }
-
-        private async Task<Chat> CreateSavedMessagesChatAsync(string userId, CancellationToken cancellationToken)
-        {
-            var now = this.clock.UtcNow;
-            var chat = new Chat
-            {
-                Id = "saved-" + userId,
-                Type = NexusTeam.Shared.Enums.ChatType.SavedMessages,
-                Name = "Saved Messages",
-                ParticipantIds = new List<string> { userId },
-                CreatedBy = userId,
-                CreatedAt = now,
-                UpdatedAt = now,
-                LastMessageAt = null,
-            };
-
-            await this.chatRepository.CreateAsync(chat, cancellationToken);
-            this.logger.Information("Created Saved Messages chat {ChatId} for user {UserId}", chat.Id, userId);
-            return chat;
-        }
-
-        private bool IsSavedMessagesChat(Chat chat)
-        {
-            if (chat.Type == NexusTeam.Shared.Enums.ChatType.SavedMessages)
-            {
-                return true;
-            }
-
-            return !string.IsNullOrEmpty(chat.Id)
-                && chat.Id.StartsWith("saved-", StringComparison.Ordinal);
-        }
-
-        private async Task<List<string>> GetPinnedChatIdsAsync(string userId, CancellationToken cancellationToken)
-        {
-            var preference = await this.preferenceRepository.GetByUserIdAsync(userId, cancellationToken);
-            return preference?.PinnedChats ?? new List<string>();
-        }
-
-        private List<ChatDto> SortChats(List<ChatDto> chatDtos)
-        {
-            return chatDtos
-                .OrderByDescending(this.IsSavedMessagesDto)
-                .ThenByDescending(chat => chat.LastMessageAt ?? chat.CreatedAt)
-                .ToList();
-        }
-
-        private bool IsSavedMessagesDto(ChatDto chat)
-        {
-            return chat.Type == NexusTeam.Shared.Enums.ChatType.SavedMessages
-                || (!string.IsNullOrEmpty(chat.Id) && chat.Id.StartsWith("saved-", StringComparison.Ordinal));
         }
 
         private async Task<UserDto> MapUserToDtoAsync(User user, CancellationToken cancellationToken = default)
