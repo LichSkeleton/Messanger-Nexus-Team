@@ -37,7 +37,7 @@ The **entire application — databases, the .NET Web API, and the responsive web
 ### 1. Clone and enter the project
 
 ```bash
-git clone <repository-url>
+git clone git@github.com:LichSkeleton/Messanger-Nexus-Team.git
 cd Messanger/Nexus-Team
 ```
 
