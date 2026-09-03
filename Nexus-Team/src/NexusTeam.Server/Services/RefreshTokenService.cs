@@ -35,6 +35,57 @@ namespace NexusTeam.Server.Services
         /// <inheritdoc/>
         public async Task<string> GenerateRefreshTokenAsync(string userId, CancellationToken cancellationToken = default)
         {
+            return await this.GenerateRefreshTokenCoreAsync(userId, userId, cancellationToken);
+        }
+
+        /// <inheritdoc/>
+        public async Task<string> GenerateRefreshTokenAsync(string userId, string deviceId, CancellationToken cancellationToken = default)
+        {
+            return await this.GenerateRefreshTokenCoreAsync(userId, userId + "|" + deviceId, cancellationToken);
+        }
+
+        /// <inheritdoc/>
+        public async Task<string?> ValidateRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
+        {
+            var cacheKey = RefreshTokenPrefix + refreshToken;
+            var storedIdentity = await this.cacheService.GetAsync<string>(cacheKey, cancellationToken);
+
+            if (string.IsNullOrEmpty(storedIdentity))
+            {
+                this.logger.Warning("Refresh token validation failed: token not found or expired");
+                return null;
+            }
+
+            var separator = storedIdentity.IndexOf('|');
+            var userId = separator < 0 ? storedIdentity : storedIdentity.Substring(0, separator);
+            this.logger.Debug("Refresh token validated successfully for user {UserId}", userId);
+            return userId;
+        }
+
+        /// <inheritdoc/>
+        public async Task<RefreshTokenIdentity?> ValidateRefreshTokenIdentityAsync(string refreshToken, CancellationToken cancellationToken = default)
+        {
+            var stored = await this.cacheService.GetAsync<string>(RefreshTokenPrefix + refreshToken, cancellationToken);
+            if (string.IsNullOrEmpty(stored))
+            {
+                return null;
+            }
+
+            var parts = stored.Split('|', 2);
+            return parts.Length == 2 && parts[1].Length > 0 ? new RefreshTokenIdentity(parts[0], parts[1]) : null;
+        }
+
+        /// <inheritdoc/>
+        public async Task RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
+        {
+            var cacheKey = RefreshTokenPrefix + refreshToken;
+            await this.cacheService.RemoveAsync(cacheKey, cancellationToken);
+
+            this.logger.Information("Revoked refresh token");
+        }
+
+        private async Task<string> GenerateRefreshTokenCoreAsync(string userId, string storedIdentity, CancellationToken cancellationToken)
+        {
             var randomBytes = new byte[32];
             using (var rng = RandomNumberGenerator.Create())
             {
@@ -45,36 +96,9 @@ namespace NexusTeam.Server.Services
             var cacheKey = RefreshTokenPrefix + refreshToken;
             var expiration = TimeSpan.FromDays(this.jwtOptions.RefreshTokenExpirationDays);
 
-            await this.cacheService.SetAsync(cacheKey, userId, expiration, cancellationToken);
-
+            await this.cacheService.SetAsync(cacheKey, storedIdentity, expiration, cancellationToken);
             this.logger.Information("Generated refresh token for user {UserId} with expiration {ExpirationDays} days", userId, this.jwtOptions.RefreshTokenExpirationDays);
-
             return refreshToken;
-        }
-
-        /// <inheritdoc/>
-        public async Task<string?> ValidateRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
-        {
-            var cacheKey = RefreshTokenPrefix + refreshToken;
-            var userId = await this.cacheService.GetAsync<string>(cacheKey, cancellationToken);
-
-            if (string.IsNullOrEmpty(userId))
-            {
-                this.logger.Warning("Refresh token validation failed: token not found or expired");
-                return null;
-            }
-
-            this.logger.Debug("Refresh token validated successfully for user {UserId}", userId);
-            return userId;
-        }
-
-        /// <inheritdoc/>
-        public async Task RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
-        {
-            var cacheKey = RefreshTokenPrefix + refreshToken;
-            await this.cacheService.RemoveAsync(cacheKey, cancellationToken);
-
-            this.logger.Information("Revoked refresh token");
         }
     }
 }

@@ -46,6 +46,12 @@ namespace NexusTeam.Server.Services.Abstractions
         string? GetUserIdByConnectionId(string connectionId);
 
         /// <summary>
+        /// Gets all user IDs that currently have at least one active connection.
+        /// </summary>
+        /// <returns>Distinct connected user IDs.</returns>
+        IEnumerable<string> GetConnectedUserIds();
+
+        /// <summary>
         /// Sends a message to a specific connection.
         /// </summary>
         /// <param name="connectionId">The connection ID.</param>

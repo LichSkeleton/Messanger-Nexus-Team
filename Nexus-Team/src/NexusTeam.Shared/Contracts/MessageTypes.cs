@@ -85,10 +85,5 @@ namespace NexusTeam.Shared.Contracts
         /// Message type for call audio data.
         /// </summary>
         public const string CallAudioData = "call_audio_data";
-
-        /// <summary>
-        /// Message type for call timeout notifications.
-        /// </summary>
-        public const string CallTimeout = "call_timeout";
     }
 }

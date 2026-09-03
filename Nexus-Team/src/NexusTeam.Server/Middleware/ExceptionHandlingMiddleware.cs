@@ -49,13 +49,15 @@ namespace NexusTeam.Server.Middleware
         {
             context.Response.ContentType = "application/json";
 
-            var (statusCode, message) = exception switch
+            var (statusCode, message, includeDetail) = exception switch
             {
-                ValidationException => ((int)HttpStatusCode.BadRequest, exception.Message),
-                DuplicateChatException => ((int)HttpStatusCode.Conflict, exception.Message),
-                DuplicateUserException => ((int)HttpStatusCode.Conflict, exception.Message),
-                AuthenticationException => ((int)HttpStatusCode.Unauthorized, exception.Message),
-                _ => ((int)HttpStatusCode.InternalServerError, "An error occurred while processing your request."),
+                ValidationException => ((int)HttpStatusCode.BadRequest, exception.Message, true),
+                DuplicateChatException => ((int)HttpStatusCode.Conflict, exception.Message, true),
+                DuplicateUserException => ((int)HttpStatusCode.Conflict, exception.Message, true),
+                AuthenticationException => ((int)HttpStatusCode.Unauthorized, exception.Message, true),
+                UnauthorizedException => ((int)HttpStatusCode.Unauthorized, exception.Message, true),
+                NotFoundException => ((int)HttpStatusCode.NotFound, exception.Message, true),
+                _ => ((int)HttpStatusCode.InternalServerError, "An error occurred while processing your request.", false),
             };
 
             context.Response.StatusCode = statusCode;
@@ -64,7 +66,7 @@ namespace NexusTeam.Server.Middleware
             {
                 StatusCode = statusCode,
                 Message = message,
-                Detail = exception.Message,
+                Detail = includeDetail ? exception.Message : message,
             };
 
             var json = JsonSerializer.Serialize(response);

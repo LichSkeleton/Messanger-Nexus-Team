@@ -53,35 +53,33 @@ namespace NexusTeam.Server.Services
         /// <inheritdoc/>
         public Task<string> GenerateAccessTokenAsync(User user)
         {
-            var key = Encoding.UTF8.GetBytes(this.options.SecretKey);
-            var securityKey = new SymmetricSecurityKey(key);
-            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+            return this.GenerateAccessTokenCoreAsync(user, null);
+        }
 
-            var now = this.clock.UtcNow;
-            var expiration = now.AddMinutes(this.options.ExpirationMinutes);
+        /// <inheritdoc/>
+        public Task<string> GenerateAccessTokenAsync(User user, string deviceId)
+        {
+            return this.GenerateAccessTokenCoreAsync(user, deviceId);
+        }
 
-            var claims = new[]
+        /// <inheritdoc/>
+        public async Task<AuthenticatedIdentity?> ValidateIdentityAsync(string token)
+        {
+            var userId = await this.ValidateTokenAsync(token);
+            if (userId == null)
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(JwtRegisteredClaimNames.Iat, new DateTimeOffset(now).ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Email, user.Email),
-            };
+                return null;
+            }
 
-            var token = new JwtSecurityToken(
-                issuer: this.options.Issuer,
-                audience: this.options.Audience,
-                claims: claims,
-                notBefore: now,
-                expires: expiration,
-                signingCredentials: credentials);
-
-            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
-            this.logger.Information("Generated JWT token for user {UserId}", user.Id);
-
-            return Task.FromResult(tokenString);
+            try
+            {
+                var principal = new JwtSecurityTokenHandler().ValidateToken(token, this.validationParameters, out _);
+                return new AuthenticatedIdentity(userId, principal.FindFirst("device_id")?.Value);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <inheritdoc/>
@@ -131,6 +129,42 @@ namespace NexusTeam.Server.Services
                 this.logger.Error(ex, "Unexpected error during JWT token validation");
                 return Task.FromResult<string?>(null);
             }
+        }
+
+        private Task<string> GenerateAccessTokenCoreAsync(User user, string? deviceId)
+        {
+            var key = Encoding.UTF8.GetBytes(this.options.SecretKey);
+            var securityKey = new SymmetricSecurityKey(key);
+            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            var now = this.clock.UtcNow;
+            var expiration = now.AddMinutes(this.options.ExpirationMinutes);
+
+            var claims = new System.Collections.Generic.List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim(JwtRegisteredClaimNames.Iat, new DateTimeOffset(now).ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Email, user.Email),
+            };
+
+            if (!string.IsNullOrWhiteSpace(deviceId))
+            {
+                claims.Add(new Claim("device_id", deviceId));
+            }
+
+            var token = new JwtSecurityToken(
+                issuer: this.options.Issuer,
+                audience: this.options.Audience,
+                claims: claims,
+                notBefore: now,
+                expires: expiration,
+                signingCredentials: credentials);
+
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+            this.logger.Information("Generated JWT token for user {UserId}", user.Id);
+            return Task.FromResult(tokenString);
         }
     }
 }

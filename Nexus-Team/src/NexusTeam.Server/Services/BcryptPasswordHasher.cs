@@ -32,8 +32,16 @@ namespace NexusTeam.Server.Services
         /// <inheritdoc/>
         public Task<bool> VerifyPasswordAsync(string password, string hash)
         {
-            var isValid = BCrypt.Verify(password, hash);
-            return Task.FromResult(isValid);
+            try
+            {
+                var isValid = BCrypt.Verify(password, hash);
+                return Task.FromResult(isValid);
+            }
+            catch (System.Exception)
+            {
+                // Malformed or unsupported stored hashes must fail closed as a normal auth miss.
+                return Task.FromResult(false);
+            }
         }
     }
 }

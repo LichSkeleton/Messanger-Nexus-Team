@@ -61,6 +61,15 @@ namespace NexusTeam.Client.Services
         Task<Stream> DownloadImageStreamAsync(MessageAttachmentDto attachment, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Downloads an attachment to a temporary file for in-app preview.
+        /// Does not save the file to the user's Downloads folder.
+        /// </summary>
+        /// <param name="attachment">The attachment to download.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The temporary file path.</returns>
+        Task<string> DownloadAttachmentToTempAsync(MessageAttachmentDto attachment, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Downloads a thumbnail stream for preview (for images).
         /// </summary>
         /// <param name="attachment">The attachment DTO.</param>

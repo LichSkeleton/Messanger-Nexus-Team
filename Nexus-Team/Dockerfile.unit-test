@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+WORKDIR /src
+
+# Restore separately so package downloads remain cached while source files change.
+COPY Directory.Build.props ./
+COPY StyleCop.ruleset ./
+COPY stylecop.json ./
+COPY coverlet.runsettings ./
+COPY src/NexusTeam.Shared/NexusTeam.Shared.csproj ./src/NexusTeam.Shared/
+COPY src/NexusTeam.Server/NexusTeam.Server.csproj ./src/NexusTeam.Server/
+COPY tests/unit/NexusTeam.Shared.Tests/NexusTeam.Shared.Tests.csproj ./tests/unit/NexusTeam.Shared.Tests/
+COPY tests/unit/NexusTeam.Server.Tests/NexusTeam.Server.Tests.csproj ./tests/unit/NexusTeam.Server.Tests/
+
+RUN dotnet restore tests/unit/NexusTeam.Shared.Tests/NexusTeam.Shared.Tests.csproj
+RUN dotnet restore tests/unit/NexusTeam.Server.Tests/NexusTeam.Server.Tests.csproj
+
+COPY src/NexusTeam.Shared/ ./src/NexusTeam.Shared/
+COPY src/NexusTeam.Server/ ./src/NexusTeam.Server/
+COPY tests/unit/NexusTeam.Shared.Tests/ ./tests/unit/NexusTeam.Shared.Tests/
+COPY tests/unit/NexusTeam.Server.Tests/ ./tests/unit/NexusTeam.Server.Tests/
+COPY tests/unit/run-unit-tests.sh ./tests/unit/run-unit-tests.sh
+
+CMD ["sh", "tests/unit/run-unit-tests.sh"]

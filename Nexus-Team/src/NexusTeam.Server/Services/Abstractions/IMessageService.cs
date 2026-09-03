@@ -20,6 +20,17 @@ namespace NexusTeam.Server.Services.Abstractions
         Task<MessageDto> SendMessageAsync(SendMessageRequest request, string senderId, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Forwards an existing message into a target chat as an independent copy.
+        /// The copy keeps its content if the original is later deleted.
+        /// </summary>
+        /// <param name="targetChatId">The chat to send the copy to (including Saved Messages).</param>
+        /// <param name="messageId">The source message ID.</param>
+        /// <param name="userId">The user forwarding the message.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The created forwarded message DTO.</returns>
+        Task<MessageDto> ForwardMessageAsync(string targetChatId, string messageId, string userId, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Edits an existing message.
         /// </summary>
         /// <param name="messageId">The message ID to edit.</param>
@@ -42,11 +53,12 @@ namespace NexusTeam.Server.Services.Abstractions
         /// Gets messages for a specific chat.
         /// </summary>
         /// <param name="chatId">The chat ID.</param>
+        /// <param name="userId">The requesting user ID.</param>
         /// <param name="limit">Maximum number of messages.</param>
         /// <param name="offset">Number of messages to skip.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A collection of message DTOs.</returns>
-        Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, int limit, int offset, CancellationToken cancellationToken = default);
+        Task<IEnumerable<MessageDto>> GetChatMessagesAsync(string chatId, string userId, int limit, int offset, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Marks a message as delivered.

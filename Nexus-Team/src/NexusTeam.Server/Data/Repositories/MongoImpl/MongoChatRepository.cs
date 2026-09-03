@@ -104,7 +104,16 @@ namespace NexusTeam.Server.Data.Repositories.MongoImpl
             }
 
             ChatType type;
-            if (string.Equals(dataChat.Type, "private", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(dataChat.Id)
+                && dataChat.Id.StartsWith("saved-", StringComparison.Ordinal))
+            {
+                type = ChatType.SavedMessages;
+            }
+            else if (string.Equals(dataChat.Type, "savedmessages", StringComparison.OrdinalIgnoreCase))
+            {
+                type = ChatType.SavedMessages;
+            }
+            else if (string.Equals(dataChat.Type, "private", StringComparison.OrdinalIgnoreCase))
             {
                 type = ChatType.DirectMessage;
             }
@@ -130,7 +139,10 @@ namespace NexusTeam.Server.Data.Repositories.MongoImpl
 
         private static DataChat MapToData(SharedChat sharedChat)
         {
-            string typeStr = sharedChat.Type == ChatType.DirectMessage ? "private" : sharedChat.Type.ToString().ToLower();
+            string typeStr = sharedChat.Type == ChatType.DirectMessage
+                || sharedChat.Type == ChatType.SavedMessages
+                ? "private"
+                : sharedChat.Type.ToString().ToLower();
 
             return new DataChat
             {

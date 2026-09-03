@@ -14,6 +14,7 @@ namespace NexusTeam.Client.ViewModels
     {
         private readonly INavigationService navigationService;
         private readonly IFileAttachmentService fileAttachmentService;
+        private readonly IAttachmentPreviewService attachmentPreviewService;
         private readonly IErrorHandlingService errorHandlingService;
         private readonly ILogger logger;
         private string conversationName;
@@ -22,14 +23,21 @@ namespace NexusTeam.Client.ViewModels
         /// <summary>
         /// Initializes a new instance of the <see cref="FilesListViewModel"/> class.
         /// </summary>
+        /// <param name="navigationService">The navigation service.</param>
+        /// <param name="fileAttachmentService">The file attachment service.</param>
+        /// <param name="attachmentPreviewService">The attachment preview service.</param>
+        /// <param name="errorHandlingService">The error handling service.</param>
+        /// <param name="logger">The logger.</param>
         public FilesListViewModel(
             INavigationService navigationService,
             IFileAttachmentService fileAttachmentService,
+            IAttachmentPreviewService attachmentPreviewService,
             IErrorHandlingService errorHandlingService,
             ILogger logger)
         {
             this.navigationService = navigationService;
             this.fileAttachmentService = fileAttachmentService;
+            this.attachmentPreviewService = attachmentPreviewService;
             this.errorHandlingService = errorHandlingService;
             this.logger = logger;
             this.Title = "Files";
@@ -80,6 +88,25 @@ namespace NexusTeam.Client.ViewModels
         private void NavigateBack()
         {
             this.navigationService.NavigateBack();
+        }
+
+        [RelayCommand]
+        private async Task PreviewAttachmentAsync(AttachmentViewModel attachment)
+        {
+            if (attachment?.AttachmentDto == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await this.attachmentPreviewService.PreviewAsync(attachment);
+            }
+            catch (Exception ex)
+            {
+                this.logger.Error(ex, "Failed to preview attachment");
+                this.errorHandlingService.ShowError(ex.Message);
+            }
         }
 
         [RelayCommand]

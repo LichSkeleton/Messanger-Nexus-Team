@@ -50,9 +50,45 @@ namespace NexusTeam.Shared.Models
         public string? ReplyToId { get; set; }
 
         /// <summary>
+        /// Gets or sets the sender ID of the message being replied to (snapshot).
+        /// </summary>
+        public string? ReplyToSenderId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the sender display name of the message being replied to (snapshot).
+        /// </summary>
+        public string? ReplyToSenderName { get; set; }
+
+        /// <summary>
+        /// Gets or sets a content preview of the message being replied to (snapshot).
+        /// </summary>
+        public string? ReplyToContent { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this message was forwarded.
+        /// </summary>
+        public bool IsForwarded { get; set; }
+
+        /// <summary>
+        /// Gets or sets the original sender ID of a forwarded message (snapshot).
+        /// </summary>
+        public string? ForwardedFromSenderId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the original sender display name of a forwarded message (snapshot).
+        /// </summary>
+        public string? ForwardedFromSenderName { get; set; }
+
+        /// <summary>
         /// Gets or sets a value indicating whether the message has been deleted.
         /// </summary>
         public bool IsDeleted { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this is a system event
+        /// (for example, a member leaving the group).
+        /// </summary>
+        public bool IsSystem { get; set; }
 
         /// <summary>
         /// Gets or sets the list of attachments for this message.

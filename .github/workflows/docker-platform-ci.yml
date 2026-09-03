@@ -2,6 +2,7 @@ name: Docker Platform CI
 
 on:
   push:
+    branches: [ main ]
     paths:
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/.dockerignore'
@@ -31,8 +32,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Determine Docker scope
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect relevant changes
+        id: scope
+        shell: bash
+        run: |
+          run_ci=true
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "synchronize" ]]; then
+            run_ci=false
+            if git diff --name-only "${{ github.event.before }}" "${{ github.event.after }}" -- \
+              Nexus-Team/docker-compose.yaml \
+              Nexus-Team/.dockerignore \
+              Nexus-Team/src \
+              Nexus-Team/web \
+              Nexus-Team/config \
+              Nexus-Team/scripts/verify-docker-stack.sh \
+              .github/workflows/docker-platform-ci.yml \
+              .github/workflows/docker-desktop-hosts.yml | grep -q .; then
+              run_ci=true
+            fi
+          fi
+          echo "run=$run_ci" >> "$GITHUB_OUTPUT"
+
   validate-compose:
     name: Validate Docker Compose
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 

@@ -24,12 +24,13 @@ namespace NexusTeam.Server.Middleware
     public class WebSocketHandler
     {
         /// <summary>
-        /// JSON options for serializing ad-hoc/anonymous payload objects (e.g. inline error payloads).
-        /// The shared <see cref="NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket"/> options
-        /// use a source-generated, metadata-only <c>TypeInfoResolver</c> that only knows the DTO/contract types
-        /// it was told about at compile time — passing an anonymous type or a <see cref="JsonNode"/> to it throws
-        /// ("no type info for the given type"). This reflection-based options instance has no such restriction,
-        /// while keeping the same camelCase convention as the rest of the app.
+        /// JSON options for serializing ad-hoc/anonymous payload objects (e.g. inline error payloads,
+        /// or the JsonObject used to inject fromUserId/toUserId into forwarded call signaling payloads).
+        /// The shared <see cref="NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket"/>
+        /// options use a source-generated, metadata-only <c>TypeInfoResolver</c> that only knows the
+        /// DTO/contract types it was told about at compile time — passing an anonymous type or a
+        /// <see cref="JsonNode"/> to it throws. This reflection-based options instance has no such
+        /// restriction, while keeping the same camelCase convention as the rest of the app.
         /// </summary>
         private static readonly JsonSerializerOptions AdHocPayloadOptions = new JsonSerializerOptions
         {
@@ -455,12 +456,22 @@ namespace NexusTeam.Server.Middleware
                 }
 
                 this.logger.Information("Validating JWT token, length: {Length}", authPayload.Token.Length);
-                var userId = await this.jwtTokenService.ValidateTokenAsync(authPayload.Token);
+                var identity = await this.jwtTokenService.ValidateIdentityAsync(authPayload.Token);
+                var userId = identity?.UserId;
 
-                if (string.IsNullOrEmpty(userId))
+                if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(identity?.DeviceId))
                 {
-                    this.logger.Warning("Authentication failed: Token validation returned null or empty userId");
+                    this.logger.Warning("Authentication failed: Token is not bound to a user device");
                     await this.SendErrorAsync(webSocket, "Authentication failed");
+                    return null;
+                }
+
+                var deviceService = httpContext.RequestServices.GetRequiredService<IUserDeviceService>();
+                var accessState = await deviceService.GetAccessStateAsync(userId, identity.DeviceId, CancellationToken.None);
+                if (accessState != DeviceAccessState.Allowed)
+                {
+                    this.logger.Warning("WebSocket authentication rejected for device {DeviceId}: {AccessState}", identity.DeviceId, accessState);
+                    await this.SendErrorAsync(webSocket, accessState == DeviceAccessState.Locked ? "DEVICE_LOCKED" : "DEVICE_SESSION_INVALID");
                     return null;
                 }
 
@@ -585,10 +596,15 @@ namespace NexusTeam.Server.Middleware
             if (!isAllowed)
             {
                 this.logger.Warning("Rate limit exceeded for message send: {UserId}", userId);
+                var errorPayload = new RateLimitErrorPayload
+                {
+                    Error = "Rate limit exceeded",
+                    Message = "Too many messages sent. Please slow down.",
+                };
                 var errorResponse = new WebSocketMessageEnvelope
                 {
                     Type = NexusTeam.Shared.Enums.WebSocketMessageType.Error,
-                    Payload = JsonSerializer.SerializeToElement(new { Error = "Rate limit exceeded", Message = "Too many messages sent. Please slow down." }, AdHocPayloadOptions),
+                    Payload = JsonSerializer.SerializeToElement(errorPayload, options),
                 };
                 var errorJson = JsonSerializer.Serialize(errorResponse, options);
                 await this.connectionManager.BroadcastToUserAsync(userId, errorJson, CancellationToken.None);

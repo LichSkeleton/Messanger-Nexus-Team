@@ -20,6 +20,14 @@ namespace NexusTeam.Server.Validators
             this.RuleFor(x => x.Password)
                 .NotEmpty().WithMessage("Password is required")
                 .MaximumLength(100).WithMessage("Password must not exceed 100 characters");
+
+            this.RuleFor(x => x.DeviceId)
+                .NotEmpty().WithMessage("Device ID is required")
+                .Must(value => System.Guid.TryParse(value, out _)).WithMessage("Device ID must be a valid UUID");
+
+            this.RuleFor(x => x.DeviceName)
+                .NotEmpty().WithMessage("Device name is required")
+                .MaximumLength(120).WithMessage("Device name must not exceed 120 characters");
         }
     }
 }

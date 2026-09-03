@@ -15,6 +15,11 @@ namespace NexusTeam.Client.Selectors
         public DataTemplate? DateSeparatorTemplate { get; set; }
 
         /// <summary>
+        /// Gets or sets the template for centered system messages.
+        /// </summary>
+        public DataTemplate? SystemMessageTemplate { get; set; }
+
+        /// <summary>
         /// Gets or sets the template for messages.
         /// </summary>
         public DataTemplate? MessageTemplate { get; set; }
@@ -27,8 +32,13 @@ namespace NexusTeam.Client.Selectors
                 return this.DateSeparatorTemplate;
             }
 
-            if (item is MessageViewModel)
+            if (item is MessageViewModel message)
             {
+                if (message.IsSystem)
+                {
+                    return this.SystemMessageTemplate;
+                }
+
                 return this.MessageTemplate;
             }
 

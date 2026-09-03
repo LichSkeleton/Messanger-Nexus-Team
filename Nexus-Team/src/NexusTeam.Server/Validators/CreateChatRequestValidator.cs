@@ -22,11 +22,14 @@ namespace NexusTeam.Server.Validators
                 .When(x => !string.IsNullOrEmpty(x.Description));
 
             this.RuleFor(x => x.ParticipantIds)
+                .Cascade(CascadeMode.Stop)
                 .NotNull().WithMessage("Participant list is required")
                 .Must(x => x.Count >= 1).WithMessage("At least one other participant is required (minimum 2 including creator)");
 
             this.RuleFor(x => x.Type)
-                .IsInEnum().WithMessage("Invalid chat type");
+                .IsInEnum().WithMessage("Invalid chat type")
+                .Must(type => type != NexusTeam.Shared.Enums.ChatType.SavedMessages)
+                .WithMessage("Saved Messages chats are created automatically.");
 
             this.RuleFor(x => x.AvatarUrl)
                 .MaximumLength(500).WithMessage("Avatar URL must not exceed 500 characters")

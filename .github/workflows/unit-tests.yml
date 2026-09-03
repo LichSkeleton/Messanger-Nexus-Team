@@ -1,0 +1,115 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Nexus-Team/Dockerfile.unit-test'
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/tests/unit/**'
+      - '.github/workflows/unit-tests.yml'
+  pull_request:
+    paths:
+      - 'Nexus-Team/Dockerfile.unit-test'
+      - 'Nexus-Team/docker-compose.yaml'
+      - 'Nexus-Team/src/**'
+      - 'Nexus-Team/tests/unit/**'
+      - '.github/workflows/unit-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit test baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      badge: ${{ steps.badge.outputs.json }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: scope
+        shell: bash
+        run: |
+          run_tests=true
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "synchronize" ]]; then
+            run_tests=false
+            if git diff --name-only "${{ github.event.before }}" "${{ github.event.after }}" -- \
+              Nexus-Team/Dockerfile.unit-test \
+              Nexus-Team/docker-compose.yaml \
+              Nexus-Team/src \
+              Nexus-Team/tests/unit \
+              .github/scripts \
+              .github/workflows/unit-tests.yml | grep -q .; then
+              run_tests=true
+            fi
+          fi
+          echo "run=$run_tests" >> "$GITHUB_OUTPUT"
+
+      - name: Run required unit-test baseline
+        id: baseline
+        if: steps.scope.outputs.run == 'true'
+        continue-on-error: true
+        working-directory: Nexus-Team
+        run: |
+          set -o pipefail
+          docker compose run --rm --build \
+            -e TEST_FILTER="Category!=Regression" \
+            unit-test 2>&1 | tee "$RUNNER_TEMP/unit-baseline.log"
+
+      - name: Exercise documented unit regressions
+        if: steps.scope.outputs.run == 'true'
+        continue-on-error: true
+        working-directory: Nexus-Team
+        run: |
+          set -o pipefail
+          docker compose run --rm \
+            -e TEST_FILTER="Category=Regression" \
+            unit-test 2>&1 | tee "$RUNNER_TEMP/unit-regressions.log"
+
+      - name: Generate dynamic unit-test count badge
+        id: badge
+        if: always() && steps.scope.outputs.run == 'true'
+        run: >-
+          python3 .github/scripts/create-test-badge.py
+          --label "unit tests"
+          --baseline-log "$RUNNER_TEMP/unit-baseline.log"
+          --regression-log "$RUNNER_TEMP/unit-regressions.log"
+          --output "$RUNNER_TEMP/unit-tests.json"
+          && echo "json=$(base64 < "$RUNNER_TEMP/unit-tests.json" | tr -d '\n')" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce unit-test baseline
+        if: always() && steps.scope.outputs.run == 'true' && steps.baseline.outcome != 'success'
+        run: exit 1
+
+  publish-unit-badge:
+    name: Publish unit-test badge
+    needs: unit-tests
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.unit-tests.outputs.badge != ''
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: test-badge-publisher
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Publish badge data
+        run: |
+          echo "${{ needs.unit-tests.outputs.badge }}" | base64 --decode > "$RUNNER_TEMP/unit-tests.json"
+          bash .github/scripts/publish-test-badge.sh "$RUNNER_TEMP/unit-tests.json" unit-tests.json

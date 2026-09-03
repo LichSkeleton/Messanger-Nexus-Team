@@ -16,6 +16,14 @@ namespace NexusTeam.Server.Services.Abstractions
         /// <returns>The generated refresh token.</returns>
         Task<string> GenerateRefreshTokenAsync(string userId, CancellationToken cancellationToken = default);
 
+        /// <summary>Generates a refresh token bound to a device.</summary>
+        /// <param name="userId">User identifier.</param>
+        /// <param name="deviceId">Device identifier.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The generated token.</returns>
+        Task<string> GenerateRefreshTokenAsync(string userId, string deviceId, CancellationToken cancellationToken = default)
+            => this.GenerateRefreshTokenAsync(userId, cancellationToken);
+
         /// <summary>
         /// Validates a refresh token and returns the associated user ID.
         /// </summary>
@@ -23,6 +31,16 @@ namespace NexusTeam.Server.Services.Abstractions
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The user ID if valid, null otherwise.</returns>
         Task<string?> ValidateRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default);
+
+        /// <summary>Validates and returns a device-bound refresh identity.</summary>
+        /// <param name="refreshToken">Refresh token.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The bound identity, or null.</returns>
+        async Task<RefreshTokenIdentity?> ValidateRefreshTokenIdentityAsync(string refreshToken, CancellationToken cancellationToken = default)
+        {
+            var userId = await this.ValidateRefreshTokenAsync(refreshToken, cancellationToken);
+            return userId == null ? null : new RefreshTokenIdentity(userId, string.Empty);
+        }
 
         /// <summary>
         /// Revokes a refresh token.

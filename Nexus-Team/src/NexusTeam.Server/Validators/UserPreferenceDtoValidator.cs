@@ -23,6 +23,9 @@ namespace NexusTeam.Server.Validators
 
             this.RuleFor(x => x.MutedChats)
                 .Must(chats => chats == null || chats.Count <= 1000).WithMessage("Muted chats list cannot exceed 1000 items");
+
+            this.RuleFor(x => x.PinnedChats)
+                .Must(chats => chats == null || chats.Count <= 100).WithMessage("Pinned chats list cannot exceed 100 items");
         }
     }
 }
