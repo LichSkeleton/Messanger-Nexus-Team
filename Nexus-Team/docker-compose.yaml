@@ -326,7 +326,7 @@ services:
     ports:
       - "3478:3478"
       - "5349:5349"
-      - "49152-65535:49152-65535/udp"
+      - "49160-49200:49160-49200/udp"
     command:
       - --no-stdout-log
       - --no-tls
@@ -341,9 +341,9 @@ services:
       - --relay-ip
       - 0.0.0.0
       - --min-port
-      - "49152"
+      - "49160"
       - --max-port
-      - "65535"
+      - "49200"
       - --realm
       - "nexusteam"
       - --fingerprint

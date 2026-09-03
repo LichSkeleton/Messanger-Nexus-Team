@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Enums
     /// <summary>
     /// Type of call being initiated.
     /// </summary>
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(JsonStringEnumConverter<CallType>))]
     public enum CallType
     {
         /// <summary>

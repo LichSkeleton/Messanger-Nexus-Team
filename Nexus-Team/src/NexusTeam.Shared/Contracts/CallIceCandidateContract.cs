@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for WebRTC ICE candidates.
     /// Sent during WebRTC connection establishment to exchange network connectivity information.
-    /// JSON schema: { "type": "call_ice_candidate", "callId": "...", "fromUserId": "...", "toUserId": "...", "candidate": "...", "sdpMid": "...", "sdpMLineIndex": 0, "timestamp": "..." }.
+    /// JSON schema: { "type": "callIceCandidate", "callId": "...", "fromUserId": "...", "toUserId": "...", "candidate": "...", "sdpMid": "...", "sdpMLineIndex": 0, "timestamp": "..." }.
     /// </summary>
     public class CallIceCandidateContract : IWebSocketMessage
     {

@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for WebRTC SDP answers.
     /// Sent in response to an SDP offer, contains the SDP answer.
-    /// JSON schema: { "type": "call_sdp_answer", "callId": "...", "fromUserId": "...", "toUserId": "...", "sdp": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "callSdpAnswer", "callId": "...", "fromUserId": "...", "toUserId": "...", "sdp": "...", "timestamp": "..." }.
     /// </summary>
     public class CallSdpAnswerContract : IWebSocketMessage
     {

@@ -21,10 +21,10 @@
         StatusUpdate: "statusUpdate", Heartbeat: "heartbeat", Error: "error",
         Authenticate: "authenticate", MessageReaction: "messageReaction",
         AvatarUpdate: "avatarUpdate", ChatDeleted: "chatDeleted", ChatCreated: "chatCreated",
-        ChatUpdated: "chatUpdated", CallRequest: "call_request", CallAnswer: "call_answer",
-        CallSdpOffer: "call_sdp_offer", CallSdpAnswer: "call_sdp_answer",
-        CallIceCandidate: "call_ice_candidate", CallEnd: "call_end",
-        CallTimeout: "call_timeout"
+        ChatUpdated: "chatUpdated", CallRequest: "callRequest", CallAnswer: "callAnswer",
+        CallSdpOffer: "callSdpOffer", CallSdpAnswer: "callSdpAnswer",
+        CallIceCandidate: "callIceCandidate", CallEnd: "callEnd",
+        CallTimeout: "callTimeout"
     };
 
     // Numeric enum values the server may emit if string-enum conversion is missing.
@@ -1411,24 +1411,46 @@
             var stateName = pc.connectionState;
             if (stateName === "connected") {
                 startQualityMonitor(pc);
-                if (state.currentCall) state.currentCall.everConnected = true;
-            }
-            if (stateName === "failed" || stateName === "disconnected" || stateName === "closed") {
-                if (state.currentCall && state.currentCall.ended !== true) {
-                    endCurrentCall("Connection ended");
-                }
+                state.currentCall.everConnected = true;
+                clearDisconnectGrace(state.currentCall);
+            } else if (stateName === "failed" || stateName === "closed") {
+                if (state.currentCall.ended !== true) endCurrentCall("Connection ended");
+            } else if (stateName === "disconnected") {
+                // "disconnected" is often a transient blip during normal ICE negotiation/renegotiation —
+                // it can recover to "connected" on its own within a second or two. Give it a grace period
+                // instead of hanging up immediately, or every call would die on the first flicker.
+                scheduleDisconnectGrace(state.currentCall, "Connection ended");
             }
         };
         pc.oniceconnectionstatechange = function () {
             if (!state.currentCall) return;
             var iceState = pc.iceConnectionState;
-            if (iceState === "failed" || iceState === "disconnected") {
-                if (state.currentCall && state.currentCall.ended !== true) {
-                    endCurrentCall("Call disconnected");
-                }
+            if (iceState === "failed") {
+                if (state.currentCall.ended !== true) endCurrentCall("Call disconnected");
+            } else if (iceState === "disconnected") {
+                scheduleDisconnectGrace(state.currentCall, "Call disconnected");
+            } else if (iceState === "connected" || iceState === "completed") {
+                clearDisconnectGrace(state.currentCall);
             }
         };
         return pc;
+    }
+
+    function scheduleDisconnectGrace(call, message) {
+        if (!call || call.disconnectGraceTimer) return;
+        call.disconnectGraceTimer = setTimeout(function () {
+            call.disconnectGraceTimer = null;
+            if (state.currentCall === call && call.ended !== true) {
+                endCurrentCall(message);
+            }
+        }, 6000);
+    }
+
+    function clearDisconnectGrace(call) {
+        if (call && call.disconnectGraceTimer) {
+            clearTimeout(call.disconnectGraceTimer);
+            call.disconnectGraceTimer = null;
+        }
     }
 
     function releaseLocalStream() {
@@ -1442,6 +1464,7 @@
         stopRingtone();
         stopQualityMonitor();
         stopScreenShare(true);
+        clearDisconnectGrace(state.currentCall);
         if (state.currentCall.pc) {
             try { state.currentCall.pc.close(); } catch (e) { }
             state.currentCall.pc = null;
@@ -1583,6 +1606,24 @@
                     toast("Call timed out");
                 }
             }, 30000);
+
+            // Ask for camera/microphone permission and set up the peer connection right away,
+            // so the browser prompt appears the moment the caller starts the call (not only
+            // once the callee answers) and the caller can preview their own video while ringing.
+            var call = state.currentCall;
+            getIceServers().then(function () {
+                if (!state.currentCall || state.currentCall.callId !== callId) return;
+                call.pc = createPeerConnection();
+                return requestLocalMedia(callType).then(function (stream) {
+                    if (!state.currentCall || state.currentCall.callId !== callId) return;
+                    applyLocalStream(stream);
+                });
+            }).catch(function (err) {
+                if (state.currentCall && state.currentCall.callId === callId) {
+                    toast("Camera/microphone unavailable: " + (err.message || err));
+                }
+            });
+
             resolve();
         });
     }
@@ -1696,27 +1737,30 @@
 
     function handleCallAnswer(payload) {
         if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId) return;
-        state.currentCall.accepted = true;
-        if (!state.currentCall.pc) {
-            getIceServers().then(function () {
-                state.currentCall.pc = createPeerConnection();
-                requestLocalMedia(state.currentCall.callType).then(function (stream) {
-                    applyLocalStream(stream);
-                    state.currentCall.pc.createOffer().then(function (offer) {
-                        return state.currentCall.pc.setLocalDescription(offer);
-                    }).then(function () {
-                        sendSocket(WS.CallSdpOffer, {
-                            callId: state.currentCall.callId,
-                            fromUserId: state.me.id,
-                            toUserId: state.currentCall.remoteUserId,
-                            sdp: state.currentCall.pc.localDescription.sdp,
-                            timestamp: new Date().toISOString()
-                        });
-                        showActiveCall();
-                    }).catch(function (err) { toast("Call failed: " + (err.message || err)); endCurrentCall(); });
-                }).catch(function (err) { toast("Media failed: " + (err.message || err)); endCurrentCall(); });
+        var call = state.currentCall;
+        call.accepted = true;
+
+        var ensureReady = call.pc
+            ? Promise.resolve()
+            : getIceServers().then(function () {
+                  call.pc = createPeerConnection();
+                  return requestLocalMedia(call.callType).then(applyLocalStream);
+              });
+
+        ensureReady.then(function () {
+            return call.pc.createOffer();
+        }).then(function (offer) {
+            return call.pc.setLocalDescription(offer);
+        }).then(function () {
+            sendSocket(WS.CallSdpOffer, {
+                callId: call.callId,
+                fromUserId: state.me.id,
+                toUserId: call.remoteUserId,
+                sdp: call.pc.localDescription.sdp,
+                timestamp: new Date().toISOString()
             });
-        }
+            showActiveCall();
+        }).catch(function (err) { toast("Call failed: " + (err.message || err)); endCurrentCall(); });
     }
 
     function handleCallSdpOffer(payload) {
@@ -1977,6 +2021,10 @@
                 break;
             case WS.Error:
                 if (error) toast(error);
+                if (state.currentCall && !state.currentCall.everConnected) {
+                    recordCallHistory(state.currentCall, "Failed");
+                    cleanupCall();
+                }
                 break;
             default:
                 break;

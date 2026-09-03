@@ -23,6 +23,19 @@ namespace NexusTeam.Server.Middleware
     /// </summary>
     public class WebSocketHandler
     {
+        /// <summary>
+        /// JSON options for serializing ad-hoc/anonymous payload objects (e.g. inline error payloads).
+        /// The shared <see cref="NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket"/> options
+        /// use a source-generated, metadata-only <c>TypeInfoResolver</c> that only knows the DTO/contract types
+        /// it was told about at compile time — passing an anonymous type or a <see cref="JsonNode"/> to it throws
+        /// ("no type info for the given type"). This reflection-based options instance has no such restriction,
+        /// while keeping the same camelCase convention as the rest of the app.
+        /// </summary>
+        private static readonly JsonSerializerOptions AdHocPayloadOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+
         private readonly RequestDelegate next;
         private readonly IWebSocketConnectionManager connectionManager;
         private readonly IJwtTokenService jwtTokenService;
@@ -575,7 +588,7 @@ namespace NexusTeam.Server.Middleware
                 var errorResponse = new WebSocketMessageEnvelope
                 {
                     Type = NexusTeam.Shared.Enums.WebSocketMessageType.Error,
-                    Payload = JsonSerializer.SerializeToElement(new { Error = "Rate limit exceeded", Message = "Too many messages sent. Please slow down." }, options),
+                    Payload = JsonSerializer.SerializeToElement(new { Error = "Rate limit exceeded", Message = "Too many messages sent. Please slow down." }, AdHocPayloadOptions),
                 };
                 var errorJson = JsonSerializer.Serialize(errorResponse, options);
                 await this.connectionManager.BroadcastToUserAsync(userId, errorJson, CancellationToken.None);
@@ -930,7 +943,7 @@ namespace NexusTeam.Server.Middleware
                 var forwardEnvelope = new WebSocketMessageEnvelope
                 {
                     Type = envelope.Type,
-                    Payload = JsonSerializer.SerializeToElement(jsonNode, options),
+                    Payload = JsonSerializer.SerializeToElement(jsonNode, AdHocPayloadOptions),
                 };
 
                 var message = JsonSerializer.Serialize(forwardEnvelope, options);

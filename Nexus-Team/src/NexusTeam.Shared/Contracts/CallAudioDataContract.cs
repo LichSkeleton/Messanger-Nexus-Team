@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for call audio data.
     /// Sent when transmitting raw audio data during an active call.
-    /// JSON schema: { "type": "call_audio_data", "callId": "...", "fromUserId": "...", "toUserId": "...", "audioData": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "callAudioData", "callId": "...", "fromUserId": "...", "toUserId": "...", "audioData": "...", "timestamp": "..." }.
     /// </summary>
     public class CallAudioDataContract : IWebSocketMessage
     {

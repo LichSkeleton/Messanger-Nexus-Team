@@ -23,6 +23,7 @@ namespace NexusTeam.Server.Controllers
         private readonly IConfiguration configuration;
         private readonly ILogger logger;
         private readonly ICallHistoryService callHistoryService;
+        private readonly IChatService chatService;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CallsController"/> class.
@@ -30,16 +31,21 @@ namespace NexusTeam.Server.Controllers
         /// <param name="configuration">Application configuration.</param>
         /// <param name="logger">Logger instance.</param>
         /// <param name="callHistoryService">Call history service.</param>
-        public CallsController(IConfiguration configuration, ILogger logger, ICallHistoryService callHistoryService)
+        /// <param name="chatService">Chat service, used to verify chat membership before exposing history.</param>
+        public CallsController(IConfiguration configuration, ILogger logger, ICallHistoryService callHistoryService, IChatService chatService)
         {
             this.configuration = configuration;
             this.logger = logger;
             this.callHistoryService = callHistoryService;
+            this.chatService = chatService;
         }
 
         /// <summary>
         /// Records the outcome of a call (completed/rejected/missed/failed) reported by a client.
         /// </summary>
+        /// <param name="request">The call outcome details.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The recorded call history entry, or 401/403 if the caller is not a participant.</returns>
         [HttpPost("history")]
         [ProducesResponseType(typeof(CallHistoryDto), 200)]
         [ProducesResponseType(401)]
@@ -63,15 +69,26 @@ namespace NexusTeam.Server.Controllers
         /// <summary>
         /// Gets recent call history for a chat.
         /// </summary>
+        /// <param name="chatId">The chat identifier.</param>
+        /// <param name="limit">The maximum number of entries to return.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The chat's recent call history, or 401/403 if the caller is not a participant.</returns>
         [HttpGet("history/{chatId}")]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
+        [ProducesResponseType(403)]
         public async Task<IActionResult> GetHistory(string chatId, [FromQuery] int limit = 30, CancellationToken cancellationToken = default)
         {
             var userId = this.HttpContext.Items["UserId"] as string;
             if (string.IsNullOrEmpty(userId))
             {
                 return this.Unauthorized();
+            }
+
+            var chat = await this.chatService.GetChatByIdAsync(chatId, userId, cancellationToken);
+            if (chat == null)
+            {
+                return this.Forbid();
             }
 
             var history = await this.callHistoryService.GetByChatIdAsync(chatId, limit, cancellationToken);
@@ -81,6 +98,8 @@ namespace NexusTeam.Server.Controllers
         /// <summary>
         /// Gets missed calls the current user hasn't seen yet (shown as a toast on reconnect).
         /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The caller's unseen missed calls, or 401 if unauthenticated.</returns>
         [HttpGet("history/missed/unseen")]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
@@ -99,9 +118,13 @@ namespace NexusTeam.Server.Controllers
         /// <summary>
         /// Marks a missed-call entry as seen.
         /// </summary>
+        /// <param name="id">The history entry identifier.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>204 on success, or 401/403 if the caller is not the callee on that entry.</returns>
         [HttpPost("history/{id}/seen")]
         [ProducesResponseType(204)]
         [ProducesResponseType(401)]
+        [ProducesResponseType(403)]
         public async Task<IActionResult> MarkSeen(string id, CancellationToken cancellationToken)
         {
             var userId = this.HttpContext.Items["UserId"] as string;
@@ -110,7 +133,12 @@ namespace NexusTeam.Server.Controllers
                 return this.Unauthorized();
             }
 
-            await this.callHistoryService.MarkSeenAsync(id, cancellationToken);
+            var marked = await this.callHistoryService.MarkSeenAsync(id, userId, cancellationToken);
+            if (!marked)
+            {
+                return this.Forbid();
+            }
+
             return this.NoContent();
         }
 
@@ -178,7 +206,7 @@ namespace NexusTeam.Server.Controllers
             return Convert.ToBase64String(hash);
         }
 
-        private sealed class IceServerDto
+        public sealed class IceServerDto
         {
             public IEnumerable<string> Urls { get; set; } = Array.Empty<string>();
 
@@ -187,7 +215,7 @@ namespace NexusTeam.Server.Controllers
             public string? Credential { get; set; }
         }
 
-        private sealed class IceServersResponse
+        public sealed class IceServersResponse
         {
             public IEnumerable<IceServerDto> IceServers { get; set; } = Array.Empty<IceServerDto>();
         }

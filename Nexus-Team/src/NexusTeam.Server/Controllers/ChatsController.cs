@@ -19,6 +19,18 @@ namespace NexusTeam.Server.Controllers
     [Route("api/chats")]
     public class ChatsController : ControllerBase
     {
+        /// <summary>
+        /// JSON options for serializing ad-hoc/anonymous payload objects. The shared
+        /// <see cref="NexusTeam.Shared.Serialization.JsonSerializerOptionsFactory.WebSocket"/> options use a
+        /// source-generated, metadata-only <c>TypeInfoResolver</c> that only knows the DTO/contract types it was
+        /// told about at compile time — passing an anonymous type to it throws. This reflection-based options
+        /// instance has no such restriction, while keeping the same camelCase convention as the rest of the app.
+        /// </summary>
+        private static readonly JsonSerializerOptions AdHocPayloadOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+
         private readonly IChatService chatService;
         private readonly IMessageService messageService;
         private readonly IWebSocketConnectionManager connectionManager;
@@ -428,7 +440,7 @@ namespace NexusTeam.Server.Controllers
                     var envelope = new WebSocketMessageEnvelope
                     {
                         Type = WebSocketMessageType.ChatDeleted,
-                        Payload = JsonSerializer.SerializeToElement(new { ChatId = id }, options),
+                        Payload = JsonSerializer.SerializeToElement(new { ChatId = id }, AdHocPayloadOptions),
                     };
 
                     var messageJson = JsonSerializer.Serialize(envelope, options);
