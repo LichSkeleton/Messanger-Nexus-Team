@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for call endings.
     /// Sent when a call is ended by either party.
-    /// JSON schema: { "type": "callEnd", "callId": "...", "fromUserId": "...", "toUserId": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "call_end", "callId": "...", "fromUserId": "...", "toUserId": "...", "timestamp": "..." }.
     /// </summary>
     public class CallEndContract : IWebSocketMessage
     {

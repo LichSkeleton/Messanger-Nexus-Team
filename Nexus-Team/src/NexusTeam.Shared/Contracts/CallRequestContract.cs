@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for call requests.
     /// Sent when a user initiates a voice call to another user.
-    /// JSON schema: { "type": "callRequest", "callId": "...", "fromUserId": "...", "toUserId": "...", "chatId": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "call_request", "callId": "...", "fromUserId": "...", "toUserId": "...", "chatId": "...", "callType": "Audio", "timestamp": "..." }.
     /// </summary>
     public class CallRequestContract : IWebSocketMessage
     {

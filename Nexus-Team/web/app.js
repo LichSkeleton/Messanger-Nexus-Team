@@ -2488,6 +2488,10 @@
             stopScreenShare(false);
             return;
         }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            toast("Screen sharing is not supported in this browser.");
+            return;
+        }
         navigator.mediaDevices.getDisplayMedia({ video: true }).then(function (screenStream) {
             var screenTrack = screenStream.getVideoTracks()[0];
             if (!screenTrack) return;

@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for call answers.
     /// Sent when a user accepts an incoming call.
-    /// JSON schema: { "type": "callAnswer", "callId": "...", "fromUserId": "...", "toUserId": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "call_answer", "callId": "...", "fromUserId": "...", "toUserId": "...", "timestamp": "..." }.
     /// </summary>
     public class CallAnswerContract : IWebSocketMessage
     {

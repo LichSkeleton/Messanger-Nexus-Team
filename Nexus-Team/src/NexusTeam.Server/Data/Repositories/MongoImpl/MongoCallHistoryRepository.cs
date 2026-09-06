@@ -14,6 +14,11 @@ namespace NexusTeam.Server.Data.Repositories.MongoImpl
     /// </summary>
     public class MongoCallHistoryRepository : ICallHistoryRepository
     {
+        // Guards the one-time duplicate cleanup + index build below so the full-collection scan
+        // runs at most once per process, not once per WebSocket connection (this repository is
+        // request-scoped and resolved during every WS handshake).
+        private static int indexEnsured;
+
         private readonly IMongoCollection<CallHistoryEntry> collection;
 
         /// <summary>
@@ -26,14 +31,19 @@ namespace NexusTeam.Server.Data.Repositories.MongoImpl
             var database = mongoClientFactory.GetDatabase();
             this.collection = database.GetCollection<CallHistoryEntry>("call_history");
 
-            // This constructor runs once per WebSocket connection (the repository is request-scoped and
-            // resolved during the WS handshake), so anything thrown here takes down every new connection —
-            // index maintenance must never be allowed to do that.
+            if (Interlocked.CompareExchange(ref indexEnsured, 1, 0) != 0)
+            {
+                return;
+            }
+
+            // Anything thrown here must never take down the connection that happened to trigger it.
             try
             {
                 // A unique index build fails outright if the collection already contains duplicate
                 // CallId values (e.g. left over from before this index existed). Clean those up first,
-                // keeping the earliest entry per call, so the index below can actually succeed.
+                // keeping the earliest entry per call, so the index below can actually succeed. This is
+                // a one-time migration step, not a steady-state cost: it only runs on the first
+                // connection handled by this process.
                 var duplicateIds = this.collection.Find(FilterDefinition<CallHistoryEntry>.Empty).ToList()
                     .GroupBy(x => x.CallId)
                     .Where(g => g.Count() > 1)
@@ -55,8 +65,8 @@ namespace NexusTeam.Server.Data.Repositories.MongoImpl
             catch (MongoException ex)
             {
                 // Degrade gracefully: TryCreateAsync below still works without the index, it just loses
-                // its extra race-safety against duplicate summary messages until this succeeds on a later
-                // connection (e.g. once the underlying data/permissions issue is resolved).
+                // its extra race-safety against duplicate summary messages until this process is restarted
+                // (e.g. once the underlying data/permissions issue is resolved).
                 logger.Warning(ex, "Could not (re)build the unique CallId index on call_history; continuing without it");
             }
         }

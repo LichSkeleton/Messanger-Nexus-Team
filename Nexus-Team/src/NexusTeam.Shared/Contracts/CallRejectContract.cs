@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for call rejections.
     /// Sent when a user rejects an incoming call.
-    /// JSON schema: { "type": "callReject", "callId": "...", "fromUserId": "...", "toUserId": "...", "reason": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "call_reject", "callId": "...", "fromUserId": "...", "toUserId": "...", "reason": "...", "timestamp": "..." }.
     /// </summary>
     public class CallRejectContract : IWebSocketMessage
     {
