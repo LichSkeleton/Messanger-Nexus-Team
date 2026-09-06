@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for WebRTC SDP offers.
     /// Sent when initiating a WebRTC connection, contains the SDP offer.
-    /// JSON schema: { "type": "call_sdp_offer", "callId": "...", "fromUserId": "...", "toUserId": "...", "sdp": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "callRequest", "callId": "...", "fromUserId": "...", "toUserId": "...", "sdp": "...", "timestamp": "..." }.
     /// </summary>
     public class CallSdpOfferContract : IWebSocketMessage
     {

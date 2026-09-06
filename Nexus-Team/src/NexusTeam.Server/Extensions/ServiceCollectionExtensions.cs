@@ -119,6 +119,8 @@ namespace NexusTeam.Server.Extensions
             services.AddScoped<IGeneratedImageService, GeneratedImageService>();
             services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
             services.AddScoped<IUserDeviceService, UserDeviceService>();
+            services.AddScoped<ICallHistoryRepository, Data.Repositories.MongoImpl.MongoCallHistoryRepository>();
+            services.AddScoped<ICallHistoryService, CallHistoryService>();
             services.AddHostedService<PresenceTrackingService>();
 
             return services;

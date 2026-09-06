@@ -5,7 +5,7 @@ namespace NexusTeam.Shared.Contracts
     /// <summary>
     /// WebSocket message contract for call requests.
     /// Sent when a user initiates a voice call to another user.
-    /// JSON schema: { "type": "call_request", "callId": "...", "fromUserId": "...", "toUserId": "...", "chatId": "...", "timestamp": "..." }.
+    /// JSON schema: { "type": "call_request", "callId": "...", "fromUserId": "...", "toUserId": "...", "chatId": "...", "callType": "Audio", "timestamp": "..." }.
     /// </summary>
     public class CallRequestContract : IWebSocketMessage
     {
@@ -31,6 +31,11 @@ namespace NexusTeam.Shared.Contracts
         /// Gets or sets the chat identifier (optional, if call is initiated from a chat).
         /// </summary>
         public string? ChatId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the call type (audio or video).
+        /// </summary>
+        public NexusTeam.Shared.Enums.CallType CallType { get; set; } = NexusTeam.Shared.Enums.CallType.Audio;
 
         /// <summary>
         /// Gets or sets the call request timestamp in ISO 8601 format.

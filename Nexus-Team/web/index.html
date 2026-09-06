@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="styles.css?v=preview12" />
+    <link rel="stylesheet" href="styles.css?v=preview14" />
 </head>
 <body class="auth-mode">
     <!-- ===================== DEVICE LOCK ===================== -->
@@ -143,6 +143,10 @@
                         <span id="peerName" class="peer-name">—</span>
                         <span id="peerStatus" class="peer-status"></span>
                     </div>
+                    <div id="callControls" class="call-controls hidden">
+                        <button id="audioCallBtn" class="icon-btn" title="Audio call" aria-label="Audio call">🎧</button>
+                        <button id="videoCallBtn" class="icon-btn" title="Video call" aria-label="Video call">📹</button>
+                    </div>
                     <button id="chatMenuBtn" class="icon-btn" title="Chat options" aria-label="Chat options">⋯</button>
                 </header>
 
@@ -184,6 +188,64 @@
     </div>
 
     <input id="fileInput" type="file" class="hidden" />
+
+    <div id="incomingCallModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="incomingCallTitle">
+        <div class="modal glass call-modal">
+            <header class="modal-header">
+                <h2 id="incomingCallTitle">Incoming call</h2>
+                <button id="closeIncomingCall" class="icon-btn" type="button" aria-label="Close">×</button>
+            </header>
+            <div class="incoming-call-body">
+                <div class="incoming-call-avatar">
+                    <img id="incomingCallAvatar" class="avatar" alt="Caller avatar" />
+                </div>
+                <div class="incoming-call-info">
+                    <span id="incomingCallName" class="peer-name">Unknown</span>
+                    <span id="incomingCallType" class="peer-status"></span>
+                </div>
+                <div class="incoming-call-actions">
+                    <button id="acceptCallBtn" class="btn-primary">Accept</button>
+                    <button id="rejectCallBtn" class="btn-secondary">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="activeCallOverlay" class="modal-overlay hidden" aria-live="polite">
+        <div class="call-overlay glass">
+            <div class="call-panel">
+                <div class="call-media">
+                    <div class="remote-media">
+                        <video id="remoteVideo" autoplay playsinline></video>
+                        <audio id="remoteAudio" autoplay></audio>
+                        <div id="remoteFallback" class="remote-fallback hidden">
+                            <img id="remoteFallbackAvatar" class="avatar" alt="Remote avatar" />
+                            <div id="remoteFallbackLabel">Remote audio only</div>
+                        </div>
+                    </div>
+                    <div class="local-preview">
+                        <video id="localVideo" autoplay muted playsinline></video>
+                        <div id="localPreviewLabel">You</div>
+                    </div>
+                </div>
+                <div class="call-status-row">
+                    <div>
+                        <div id="callTitle" class="peer-name">Call</div>
+                        <div class="call-meta-row">
+                            <span id="callTimer" class="peer-status">00:00</span>
+                            <span id="callQuality" class="call-quality" title="Connection quality">●●●</span>
+                        </div>
+                    </div>
+                    <div class="call-action-buttons">
+                        <button id="muteCallBtn" class="icon-btn" aria-label="Mute microphone">🎙</button>
+                        <button id="cameraCallBtn" class="icon-btn" aria-label="Toggle camera">📷</button>
+                        <button id="screenShareCallBtn" class="icon-btn" aria-label="Share screen">🖥️</button>
+                        <button id="endCallBtn" class="icon-btn danger" aria-label="End call">⏹</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ===================== New chat / group modal ===================== -->
     <div id="newChatModal" class="modal-overlay hidden">
@@ -491,6 +553,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=preview13"></script>
+    <script src="app.js?v=preview14"></script>
 </body>
 </html>

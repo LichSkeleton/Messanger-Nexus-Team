@@ -2,6 +2,7 @@ namespace NexusTeam.Shared.Helpers
 {
     using System;
     using System.Collections.Generic;
+    using System.Globalization;
     using System.IO;
     using System.Linq;
     using NexusTeam.Shared.Enums;
@@ -197,7 +198,7 @@ namespace NexusTeam.Shared.Helpers
                 len = len / 1024;
             }
 
-            return $"{len:0.##} {sizes[order]}";
+            return string.Create(CultureInfo.InvariantCulture, $"{len:0.##} {sizes[order]}");
         }
 
         /// <summary>

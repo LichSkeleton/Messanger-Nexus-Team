@@ -456,6 +456,7 @@ services:
       Redis__ConnectionString: "redis:6379,abortConnect=false,allowAdmin=true"
       Jwt__SecretKey: "${JWT_SECRET:-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6}"
       DeviceLock__PinPepper: "${DEVICE_LOCK_PIN_PEPPER:-local-device-lock-pepper-change-me-1234567890}"
+      TurnSecret: "${TURN_SECRET:-nexusteam_turn_secret}"
       # The browser talks to the API through the Nginx reverse proxy on the
       # same origin, so this only matters for clients hitting 5251 directly.
       Cors__AllowedOrigins__0: "http://localhost:${WEB_PORT:-8080}"
@@ -469,6 +470,46 @@ services:
       retries: 12
       start_period: 30s
     stop_grace_period: 30s
+    restart: unless-stopped
+    networks:
+      - nexusteam_network
+
+  # ===========================================================================
+  # coturn TURN/STUN server - relays WebRTC audio/video media when direct
+  # peer-to-peer connectivity isn't possible (NAT/firewall traversal).
+  # ===========================================================================
+  turn:
+    image: coturn/coturn:4.5
+    container_name: nexusteam_turn
+    ports:
+      - "3478:3478"
+      - "5349:5349"
+      - "49160-49200:49160-49200/udp"
+    command:
+      - --no-stdout-log
+      - --no-tls
+      - --no-tlsv1
+      - --no-tlsv1_1
+      - --listening-port
+      - "3478"
+      - --alt-listening-port
+      - "5349"
+      - --listening-ip
+      - 0.0.0.0
+      - --relay-ip
+      - 0.0.0.0
+      - --min-port
+      - "49160"
+      - --max-port
+      - "49200"
+      - --realm
+      - "nexusteam"
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret
+      - "${TURN_SECRET:-nexusteam_turn_secret}"
+      - --log-file
+      - "/var/log/turnserver.log"
     restart: unless-stopped
     networks:
       - nexusteam_network

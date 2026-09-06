@@ -124,5 +124,10 @@ namespace NexusTeam.Shared.Enums
         /// Chat metadata updated notification (e.g. group name or avatar).
         /// </summary>
         ChatUpdated = 23,
+
+        /// <summary>
+        /// Call timeout notification.
+        /// </summary>
+        CallTimeout = 24,
     }
 }

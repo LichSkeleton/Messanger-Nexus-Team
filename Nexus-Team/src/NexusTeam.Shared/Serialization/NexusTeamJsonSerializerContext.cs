@@ -55,6 +55,7 @@ namespace NexusTeam.Shared.Serialization
     [JsonSerializable(typeof(CallSdpAnswerContract))]
     [JsonSerializable(typeof(CallIceCandidateContract))]
     [JsonSerializable(typeof(CallAudioDataContract))]
+    [JsonSerializable(typeof(CallTimeoutContract))]
     public partial class NexusTeamJsonSerializerContext : JsonSerializerContext
     {
     }

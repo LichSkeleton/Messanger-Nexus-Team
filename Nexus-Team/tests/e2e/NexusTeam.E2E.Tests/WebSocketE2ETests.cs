@@ -94,7 +94,7 @@ namespace NexusTeam.E2E.Tests
         [Fact(DisplayName = "WS-10 Call request is forwarded to online recipient")]
         public async Task Ws10_CallForwarding()
         {
-            var caller = await this.fixture.RegisterAndLoginAsync("ws10_caller"); var callee = await this.fixture.RegisterAndLoginAsync("ws10_callee");
+            var caller = await this.fixture.RegisterAndLoginAsync("ws10_caller"); var callee = await this.fixture.RegisterAndLoginAsync("ws10_callee"); await this.fixture.CreateChatAsync(caller, callee);
             await using var callerSocket = this.fixture.Socket(); await using var calleeSocket = this.fixture.Socket(); await callerSocket.ConnectAsync(); await calleeSocket.ConnectAsync(); await callerSocket.AuthenticateAsync(caller.Token); await calleeSocket.AuthenticateAsync(callee.Token);
             var callId = Guid.NewGuid().ToString();
             await callerSocket.SendAsync(new { type = "callRequest", payload = new { callId, fromUserId = caller.Id, toUserId = callee.Id, timestamp = DateTime.UtcNow } });
