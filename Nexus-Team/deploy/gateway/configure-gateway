@@ -1,0 +1,26 @@
+#!/bin/sh
+
+set -eu
+
+: "${PUBLIC_IP:?PUBLIC_IP is required}"
+
+case "$PUBLIC_IP" in
+  *[!0-9.]*|'')
+    echo "PUBLIC_IP must be an IPv4 address" >&2
+    exit 1
+    ;;
+esac
+
+certificate_directory="/etc/letsencrypt/live/$PUBLIC_IP"
+if [ -s "$certificate_directory/fullchain.pem" ] && [ -s "$certificate_directory/privkey.pem" ]; then
+  template="/etc/nexus-gateway/https.conf.template"
+else
+  template="/etc/nexus-gateway/http.conf.template"
+fi
+
+sed "s/__PUBLIC_IP__/$PUBLIC_IP/g" "$template" > /etc/nginx/conf.d/default.conf
+nginx -t
+
+if [ "${1:-}" = "reload" ]; then
+  nginx -s reload
+fi
