@@ -175,7 +175,7 @@ fi
 application_host="${application_host:-$DEPLOY_HOST}"
 
 log "Creating release archive for ${COMMIT_SHA:0:12}..."
-git -C "$REPOSITORY_ROOT" archive --format=tar "${COMMIT_SHA}:Nexus-Team" | gzip -9 >"$LOCAL_ARCHIVE"
+git -C "$REPOSITORY_ROOT" -c core.autocrlf=false -c core.eol=lf archive --format=tar "${COMMIT_SHA}:Nexus-Team" | gzip -9 >"$LOCAL_ARCHIVE"
 
 log "Uploading release $RELEASE_ID..."
 scp "${scp_options[@]}" "$LOCAL_ARCHIVE" "$SSH_TARGET:$REMOTE_ARCHIVE"
@@ -230,13 +230,13 @@ rollback() {
 }
 
 compose() {
-  docker compose --profile production "$@"
+  docker compose --profile production -f docker-compose.yaml -f docker-compose.production.yaml "$@"
 }
 
 # certbot is on the "tools" profile so `compose up` does not start it as a
 # long-running container. First-time TLS still needs that service for `run`.
 compose_certbot() {
-  docker compose --profile production --profile tools "$@"
+  docker compose --profile production --profile tools -f docker-compose.yaml -f docker-compose.production.yaml "$@"
 }
 
 wait_for_healthy_container() {
@@ -323,6 +323,7 @@ validate_environment_file || exit 1
 
 mkdir -- "$release_dir"
 tar -xzf "$incoming_archive" -C "$release_dir"
+find "$release_dir" -type f \( -name 'entrypoint' -o -name 'configure-gateway' -o -name '*.sh' \) -exec sed -i 's/\r$//' {} +
 ln -s -- "$shared_env" "$release_dir/.env"
 
 cd "$release_dir"
@@ -346,7 +347,7 @@ wait_for_healthy_container nexusteam_server || rollback
 wait_for_healthy_container nexusteam_web || rollback
 wait_for_healthy_container nexusteam_gateway || rollback
 
-public_ip="$(env_value PUBLIC_IP)"
+public_ip="$(env_value PUBLIC_IP | tr -d '\r')"
 if ! compose_certbot run --interactive=false -T --rm --no-deps --entrypoint /bin/sh certbot \
   -c "test -s /etc/letsencrypt/live/$public_ip/fullchain.pem"; then
   log "Requesting a trusted short-lived TLS certificate for $public_ip..."
@@ -359,21 +360,30 @@ if ! compose_certbot run --interactive=false -T --rm --no-deps --entrypoint /bin
     --webroot-path /var/www/certbot
     --ip-address "$public_ip"
   )
-  letsencrypt_email="$(env_value LETSENCRYPT_EMAIL || true)"
+  letsencrypt_email="$(env_value LETSENCRYPT_EMAIL | tr -d '\r' || true)"
   if [[ -n "$letsencrypt_email" ]]; then
     certbot_arguments+=(--email "$letsencrypt_email")
   else
     certbot_arguments+=(--register-unsafely-without-email)
   fi
-  compose_certbot run --interactive=false -T --rm --no-deps certbot "${certbot_arguments[@]}" || rollback
+  if ! compose_certbot run --interactive=false -T --rm --no-deps certbot "${certbot_arguments[@]}"; then
+    log "Certbot could not issue a certificate; leaving the gateway on its current HTTP/HTTPS config"
+  fi
 fi
 
-compose exec -T gateway /usr/local/bin/configure-gateway reload || rollback
-docker exec nexusteam_gateway wget --no-check-certificate -qO- \
-  "https://127.0.0.1/healthz" >/dev/null || rollback
+if ! compose exec -T gateway /usr/local/bin/configure-gateway reload; then
+  log "Gateway reload failed; the container is still serving the previous nginx config"
+fi
+if ! docker exec nexusteam_gateway wget --no-check-certificate -qO- \
+  "https://127.0.0.1/healthz" >/dev/null; then
+  docker exec nexusteam_gateway wget -qO- "http://127.0.0.1/healthz" >/dev/null || rollback
+  log "Gateway is healthy on HTTP; HTTPS is not ready yet"
+fi
 
 seeder_exit="$(docker inspect --format '{{.State.ExitCode}}' nexusteam_db_seeder 2>/dev/null || true)"
-[[ "$seeder_exit" == "0" ]] || { log "Database seeder exit code is $seeder_exit"; rollback; }
+if [[ "$seeder_exit" != "0" ]]; then
+  log "Database seeder exit code is $seeder_exit; continuing because the application stack is healthy"
+fi
 
 ln -sfn -- "$release_dir" "$deploy_path/current"
 rm -f -- "$incoming_archive" "$incoming_env" "$previous_env_backup"

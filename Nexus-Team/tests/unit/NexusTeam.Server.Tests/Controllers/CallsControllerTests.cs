@@ -43,22 +43,23 @@ namespace NexusTeam.Server.Tests.Controllers
             var response = Assert.IsType<CallsController.IceServersResponse>(
                 Assert.IsType<OkObjectResult>(result.Result).Value);
             Assert.Contains(response.IceServers, server => server.Urls.Contains("stun:194.95.221.220:3478"));
-            var turn = Assert.Single(response.IceServers, server => server.Username != null);
-            Assert.Contains("turn:194.95.221.220:3478?transport=udp", turn.Urls);
-            Assert.Contains("turn:194.95.221.220:3478?transport=tcp", turn.Urls);
-            Assert.Contains("turn:194.95.221.220:5349?transport=tcp", turn.Urls);
-            Assert.Equal("password", turn.CredentialType);
-
-            var usernameParts = turn.Username!.Split(':');
-            Assert.Equal(2, usernameParts.Length);
-            Assert.Equal("user-1", usernameParts[1]);
-            Assert.True(long.TryParse(usernameParts[0], out var expires));
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            Assert.InRange(expires, now + (23 * 3600), now + (25 * 3600));
-
-            using var hmac = new HMACSHA1(Encoding.UTF8.GetBytes("test-turn-secret"));
-            var expectedCredential = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(turn.Username)));
-            Assert.Equal(expectedCredential, turn.Credential);
+            var turnServers = response.IceServers.Where(server => server.Username != null).ToList();
+            Assert.Equal(3, turnServers.Count);
+            Assert.Contains(turnServers, server => server.Urls.Contains("turn:194.95.221.220:3478?transport=tcp"));
+            Assert.Contains(turnServers, server => server.Urls.Contains("turn:194.95.221.220:3478?transport=udp"));
+            Assert.Contains(turnServers, server => server.Urls.Contains("turn:194.95.221.220:5349?transport=tcp"));
+            Assert.All(turnServers, turn =>
+            {
+                var usernameParts = turn.Username!.Split(':');
+                Assert.Equal(2, usernameParts.Length);
+                Assert.Equal("user-1", usernameParts[1]);
+                Assert.True(long.TryParse(usernameParts[0], out var expires));
+                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                Assert.InRange(expires, now + (23 * 3600), now + (25 * 3600));
+                using var hmac = new HMACSHA1(Encoding.UTF8.GetBytes("test-turn-secret"));
+                var expectedCredential = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(turn.Username)));
+                Assert.Equal(expectedCredential, turn.Credential);
+            });
         }
     }
 }

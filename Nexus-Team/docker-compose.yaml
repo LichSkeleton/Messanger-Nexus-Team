@@ -495,6 +495,7 @@ services:
       - --no-tlsv1_1
       - --no-cli
       - --no-multicast-peers
+      - --allow-loopback-peers
       - --fingerprint
       - --stale-nonce
       - --listening-port

@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="styles.css?v=preview14" />
+    <link rel="stylesheet" href="styles.css?v=calls25" />
 </head>
 <body class="auth-mode">
     <!-- ===================== DEVICE LOCK ===================== -->
@@ -204,8 +204,8 @@
                     <span id="incomingCallType" class="peer-status"></span>
                 </div>
                 <div class="incoming-call-actions">
-                    <button id="acceptCallBtn" class="btn-primary">Accept</button>
-                    <button id="rejectCallBtn" class="btn-secondary">Reject</button>
+                    <button id="acceptCallBtn" class="btn-primary" type="button">Accept</button>
+                    <button id="rejectCallBtn" class="btn-secondary" type="button">Reject</button>
                 </div>
             </div>
         </div>
@@ -215,33 +215,35 @@
         <div class="call-overlay glass">
             <div class="call-panel">
                 <div class="call-media">
-                    <div class="remote-media">
-                        <video id="remoteVideo" autoplay playsinline></video>
-                        <audio id="remoteAudio" autoplay></audio>
+                    <div class="remote-media" id="remoteMediaTile">
+                        <video id="remoteVideo" class="hidden" autoplay muted playsinline webkit-playsinline></video>
+                        <img id="remoteScreen" class="remote-screen hidden" alt="Shared screen" />
+                        <audio id="remoteAudio" autoplay playsinline></audio>
                         <div id="remoteFallback" class="remote-fallback hidden">
                             <img id="remoteFallbackAvatar" class="avatar" alt="Remote avatar" />
-                            <div id="remoteFallbackLabel">Remote audio only</div>
+                            <div id="remoteFallbackLabel">Waiting for picture</div>
                         </div>
                     </div>
-                    <div class="local-preview">
+                    <div class="local-preview hidden" id="localPreview">
                         <video id="localVideo" autoplay muted playsinline></video>
                         <div id="localPreviewLabel">You</div>
                     </div>
                 </div>
                 <div class="call-status-row">
-                    <div>
+                    <div class="call-status-text">
                         <div id="callTitle" class="peer-name">Call</div>
                         <div class="call-meta-row">
                             <span id="callTimer" class="peer-status">00:00</span>
                             <span id="callQuality" class="call-quality" title="Connection quality">●●●</span>
                         </div>
                     </div>
-                    <div class="call-action-buttons">
-                        <button id="muteCallBtn" class="icon-btn" aria-label="Mute microphone">🎙</button>
-                        <button id="cameraCallBtn" class="icon-btn" aria-label="Toggle camera">📷</button>
-                        <button id="screenShareCallBtn" class="icon-btn" aria-label="Share screen">🖥️</button>
-                        <button id="endCallBtn" class="icon-btn danger" aria-label="End call">⏹</button>
-                    </div>
+                </div>
+                <div class="call-action-buttons">
+                    <button id="muteCallBtn" class="call-ctrl" type="button" title="Mute microphone">Mic</button>
+                    <button id="cameraCallBtn" class="call-ctrl" type="button" title="Turn camera on">Camera</button>
+                    <button id="screenShareCallBtn" class="call-ctrl" type="button" title="Share screen">Share</button>
+                    <button id="fullCallBtn" class="call-ctrl" type="button" title="Full screen">Full</button>
+                    <button id="endCallBtn" class="call-ctrl danger" type="button" title="End call">End</button>
                 </div>
             </div>
         </div>
@@ -553,6 +555,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=preview14"></script>
+    <script src="app.js?v=calls25"></script>
 </body>
 </html>

@@ -26,7 +26,7 @@
         ChatUpdated: "chatUpdated", CallRequest: "callRequest", CallAnswer: "callAnswer",
         CallSdpOffer: "callSdpOffer", CallSdpAnswer: "callSdpAnswer",
         CallIceCandidate: "callIceCandidate", CallEnd: "callEnd",
-        CallTimeout: "callTimeout"
+        CallAudioData: "callAudioData", CallTimeout: "callTimeout"
     };
 
     // Numeric enum values the server may emit if string-enum conversion is missing.
@@ -2212,6 +2212,7 @@
         return list.map(function (server) {
             var urls = server.urls || server.Urls;
             if (!urls) return null;
+            if (typeof urls === "string") urls = [urls];
             return {
                 urls: urls,
                 username: server.username || server.Username,
@@ -2230,6 +2231,8 @@
 
     // ---- Ringtone + vibration for incoming calls -------------------------------
     var ringtone = { ctx: null, interval: null, vibrateInterval: null };
+    var callAudio = { captureCtx: null, source: null, processor: null, gain: null, nextTime: 0, sending: false };
+    var AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
     function playRingtoneBeep() {
         try {
@@ -2358,13 +2361,35 @@
         }
         var remoteVideo = $("remoteVideo");
         var remoteFallback = $("remoteFallback");
-        if (remoteVideo) show(remoteVideo);
+        if (remoteVideo) {
+            remoteVideo.muted = true;
+            show(remoteVideo);
+        }
         if (remoteFallback) hide(remoteFallback);
         updateRemoteMediaVisibility();
-        if ($("callTimer")) $("callTimer").textContent = "00:00";
-        state.currentCall.startedAt = Date.now();
-        if (state.currentCall.durationInterval) clearInterval(state.currentCall.durationInterval);
-        state.currentCall.durationInterval = setInterval(function () {
+        syncCallControlButtons();
+        if (state.currentCall && (state.currentCall.accepted || state.currentCall.outgoing)) {
+            startCallTimer(state.currentCall);
+        }
+        if ($("callTimer") && state.currentCall && !state.currentCall.startedAt) $("callTimer").textContent = "00:00";
+        bindCallViewport();
+    }
+
+    function markCallLive(call) {
+        if (!call) return;
+        call.everConnected = true;
+        startCallTimer(call);
+        if (call.timeoutHandle) {
+            clearTimeout(call.timeoutHandle);
+            call.timeoutHandle = null;
+        }
+        clearDisconnectGrace(call);
+    }
+
+    function startCallTimer(call) {
+        if (!call || call.durationInterval) return;
+        if (!call.startedAt) call.startedAt = Date.now();
+        call.durationInterval = setInterval(function () {
             if (!state.currentCall || !state.currentCall.startedAt) return;
             var secs = Math.floor((Date.now() - state.currentCall.startedAt) / 1000);
             var mm = String(Math.floor(secs / 60)).padStart(2, "0");
@@ -2373,7 +2398,35 @@
         }, 1000);
     }
 
+    function playMediaElement(el) {
+        if (!el || typeof el.play !== "function") return;
+        var result = el.play();
+        if (result && result.catch) result.catch(function () { /* autoplay may wait for Accept/Call tap */ });
+    }
+
+    function unlockCallPlayback() {
+        unlockAudio();
+        ensureCallAudioPlay();
+        var remoteVideo = $("remoteVideo");
+        var remoteAudio = $("remoteAudio");
+        if (remoteVideo) {
+            remoteVideo.muted = true;
+            remoteVideo.setAttribute("playsinline", "");
+            remoteVideo.setAttribute("webkit-playsinline", "true");
+            playMediaElement(remoteVideo);
+        }
+        if (remoteAudio) {
+            remoteAudio.muted = true;
+            playMediaElement(remoteAudio);
+        }
+        if (ringtone.ctx && ringtone.ctx.state === "suspended") {
+            try { ringtone.ctx.resume(); } catch (e) { }
+        }
+    }
+
     function hideActiveCall() {
+        setCallFullscreen(false);
+        unbindCallViewport();
         var overlay = $("activeCallOverlay");
         if (overlay) hide(overlay);
         if (state.currentCall && state.currentCall.durationInterval) {
@@ -2382,34 +2435,38 @@
         }
     }
 
+    function defaultIcePolicy() {
+        return "all";
+    }
+
     function createPeerConnection() {
         var config = {
             iceServers: state.iceServers || [],
             bundlePolicy: "max-bundle",
             rtcpMuxPolicy: "require",
-            iceCandidatePoolSize: 2
+            iceCandidatePoolSize: 0,
+            iceTransportPolicy: (state.currentCall && state.currentCall.icePolicy) || defaultIcePolicy()
         };
         var pc = new RTCPeerConnection(config);
-        if (state.currentCall && state.currentCall.outgoing) {
-            try {
-                pc.addTransceiver("audio", { direction: "sendrecv" });
-                pc.addTransceiver("video", { direction: "sendrecv" });
-            } catch (e) { /* addTransceiver unavailable; tracks are added later */ }
-        }
+        try {
+            pc.addTransceiver("audio", { direction: "sendrecv" });
+            pc.addTransceiver("video", { direction: "sendrecv" });
+        } catch (e) { /* addTransceiver unavailable; tracks are added later */ }
         if (state.currentCall) {
             state.currentCall.pendingIce = state.currentCall.pendingIce || [];
             state.currentCall.makingOffer = false;
             state.currentCall.iceRestarted = false;
         }
         pc.onicecandidate = function (evt) {
-            if (evt.candidate && state.currentCall) {
+            if (evt.candidate && evt.candidate.candidate && state.currentCall) {
                 sendSocket(WS.CallIceCandidate, {
                     callId: state.currentCall.callId,
                     fromUserId: state.me.id,
                     toUserId: state.currentCall.remoteUserId,
                     candidate: evt.candidate.candidate,
                     sdpMid: evt.candidate.sdpMid,
-                    sdpMLineIndex: evt.candidate.sdpMLineIndex
+                    sdpMLineIndex: evt.candidate.sdpMLineIndex,
+                    usernameFragment: evt.candidate.usernameFragment
                 });
             }
         };
@@ -2419,51 +2476,50 @@
         };
         pc.onconnectionstatechange = function () {
             if (!state.currentCall) return;
+            var call = state.currentCall;
             var stateName = pc.connectionState;
             if (stateName === "connected") {
                 startQualityMonitor(pc);
-                state.currentCall.everConnected = true;
-                state.currentCall.iceRestarted = false;
-                clearDisconnectGrace(state.currentCall);
+                markCallLive(call);
+                call.iceRestarted = false;
+                playMediaElement($("remoteVideo"));
+                playMediaElement($("remoteAudio"));
             } else if (stateName === "failed") {
-                if (state.currentCall.ended !== true) {
-                    if (tryIceRestart(state.currentCall, pc)) return;
-                    scheduleDisconnectGrace(state.currentCall, "Connection ended");
+                if (call.ended !== true && tryIceRestart(call, pc)) return;
+                if (!call.iceFailNotified) {
+                    call.iceFailNotified = true;
+                    toast("Voice link is weak. Screen share still works.");
                 }
             } else if (stateName === "closed") {
-                if (state.currentCall.ended !== true) endCurrentCall("Connection ended");
-            } else if (stateName === "disconnected") {
-                // "disconnected" is often a transient blip during normal ICE negotiation/renegotiation —
-                // it can recover to "connected" on its own within a second or two. Give it a grace period
-                // instead of hanging up immediately, or every call would die on the first flicker.
-                scheduleDisconnectGrace(state.currentCall, "Connection ended");
+                /* Keep the call UI up so screen share over WebSocket can continue. */
             }
+            // Ignore "disconnected" until media has actually flowed. Browsers report it during
+            // ICE/TURN setup (especially phones), and hanging up there aborts working calls.
         };
         pc.oniceconnectionstatechange = function () {
             if (!state.currentCall) return;
+            var call = state.currentCall;
             var iceState = pc.iceConnectionState;
             if (iceState === "failed") {
-                if (state.currentCall.ended !== true) {
-                    if (tryIceRestart(state.currentCall, pc)) return;
-                    scheduleDisconnectGrace(state.currentCall, "Call disconnected");
+                if (call.ended !== true && tryIceRestart(call, pc)) return;
+                if (!call.iceFailNotified) {
+                    call.iceFailNotified = true;
+                    toast("Voice link is weak. Screen share still works.");
                 }
-            } else if (iceState === "disconnected") {
-                scheduleDisconnectGrace(state.currentCall, "Call disconnected");
             } else if (iceState === "connected" || iceState === "completed") {
-                state.currentCall.iceRestarted = false;
-                clearDisconnectGrace(state.currentCall);
+                markCallLive(call);
+                call.iceRestarted = false;
             }
         };
         return pc;
     }
 
     function tryIceRestart(call, pc) {
-        if (!call || !pc || call.iceRestarted || !call.everConnected || call.ended) return false;
+        if (!call || !pc || call.iceRestarted || call.ended) return false;
         if (typeof pc.restartIce !== "function") return false;
         call.iceRestarted = true;
         try { pc.restartIce(); } catch (e) { return false; }
         renegotiate(call);
-        scheduleDisconnectGrace(call, "Call disconnected");
         return true;
     }
 
@@ -2472,11 +2528,21 @@
         var remoteAudio = $("remoteAudio");
         if (stream) {
             if (remoteVideo) {
+                remoteVideo.muted = true;
+                remoteVideo.setAttribute("playsinline", "");
+                remoteVideo.setAttribute("webkit-playsinline", "true");
                 remoteVideo.srcObject = stream;
                 remoteVideo.onresize = function () { updateRemoteMediaVisibility(); };
-                remoteVideo.onloadedmetadata = function () { updateRemoteMediaVisibility(); };
+                remoteVideo.onloadedmetadata = function () {
+                    playMediaElement(remoteVideo);
+                    updateRemoteMediaVisibility();
+                };
+                playMediaElement(remoteVideo);
             }
-            if (remoteAudio) remoteAudio.srcObject = stream;
+            if (remoteAudio) {
+                remoteAudio.muted = true;
+                remoteAudio.srcObject = stream;
+            }
         }
         if (track) {
             track.onunmute = function () { updateRemoteMediaVisibility(); };
@@ -2486,26 +2552,32 @@
         updateRemoteMediaVisibility();
     }
 
+    function hasIncomingVideoTrack(call) {
+        if (!call || !call.pc || !call.pc.getReceivers) return false;
+        var found = false;
+        call.pc.getReceivers().forEach(function (receiver) {
+            if (receiver.track && receiver.track.kind === "video" && receiver.track.readyState !== "ended") {
+                found = true;
+            }
+        });
+        return found;
+    }
+
     function updateRemoteMediaVisibility() {
         var call = state.currentCall;
         var remoteVideo = $("remoteVideo");
         var remoteFallback = $("remoteFallback");
         if (!call) return;
-        var hasRemoteVideo = !!(remoteVideo && remoteVideo.videoWidth > 2 && remoteVideo.videoHeight > 2);
-        if (!hasRemoteVideo && call.pc && call.pc.getReceivers) {
-            call.pc.getReceivers().forEach(function (receiver) {
-                if (receiver.track && receiver.track.kind === "video" && receiver.track.readyState === "live" && !receiver.track.muted) {
-                    hasRemoteVideo = true;
-                }
-            });
+        var hasWsPicture = !!(call.remoteScreenAt);
+        var remoteScreen = $("remoteScreen");
+        if (remoteScreen) {
+            if (hasWsPicture) show(remoteScreen);
+            else hide(remoteScreen);
         }
-        var showVideo = call.callType === "video" || hasRemoteVideo;
-        if (remoteVideo) {
-            remoteVideo.classList.toggle("contain", !!(hasRemoteVideo && (call.screenStream || call.callType !== "video")));
-            if (showVideo) show(remoteVideo); else hide(remoteVideo);
-        }
+        if (remoteVideo) hide(remoteVideo);
         if (remoteFallback) {
-            if (showVideo) hide(remoteFallback); else show(remoteFallback);
+            if (hasWsPicture) hide(remoteFallback);
+            else show(remoteFallback);
         }
     }
 
@@ -2537,8 +2609,9 @@
                 try { transceiver.direction = "sendrecv"; needsRenegotiation = true; } catch (e) { }
             }
             if (!sender.track) needsRenegotiation = true;
+            try { transceiver && (transceiver.direction = "sendrecv"); } catch (e) { }
             return sender.replaceTrack(track).then(function () {
-                return needsRenegotiation;
+                return true;
             });
         }
         pc.addTrack(track, stream);
@@ -2574,13 +2647,20 @@
 
     function renegotiate(call) {
         if (!call || !call.pc || call.ended) return Promise.resolve();
-        if (call.pc.signalingState !== "stable") return Promise.resolve();
+        if (call.pc.signalingState !== "stable" || call.makingOffer) {
+            call.queuedRenegotiate = true;
+            return Promise.resolve();
+        }
         call.makingOffer = true;
-        return call.pc.createOffer()
+        call.queuedRenegotiate = false;
+        return call.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
             .then(function (offer) { return call.pc.setLocalDescription(offer); })
             .then(function () { sendLocalDescription(call); })
             .catch(function (err) { console.warn("Renegotiation failed", err); })
-            .then(function () { call.makingOffer = false; });
+            .then(function () {
+                call.makingOffer = false;
+                if (call.queuedRenegotiate) return renegotiate(call);
+            });
     }
 
     function enqueueOrAddIce(call, candidate) {
@@ -2602,14 +2682,14 @@
         queued.forEach(function (candidate) { enqueueOrAddIce(call, candidate); });
     }
 
-    function scheduleDisconnectGrace(call, message) {
+    function scheduleDisconnectGrace(call, message, delayMs) {
         if (!call || call.disconnectGraceTimer) return;
         call.disconnectGraceTimer = setTimeout(function () {
             call.disconnectGraceTimer = null;
             if (state.currentCall === call && call.ended !== true) {
                 endCurrentCall(message);
             }
-        }, 6000);
+        }, delayMs || 8000);
     }
 
     function clearDisconnectGrace(call) {
@@ -2629,7 +2709,11 @@
         if (!state.currentCall) return;
         stopRingtone();
         stopQualityMonitor();
+        stopCallAudioSend();
+        stopFramePump(state.currentCall);
         stopScreenShare(true);
+        clearRemoteScreen();
+        setCallFullscreen(false);
         clearDisconnectGrace(state.currentCall);
         if (state.currentCall.pc) {
             try { state.currentCall.pc.close(); } catch (e) { }
@@ -2647,34 +2731,483 @@
             state.currentCall.timeoutHandle = null;
         }
         state.currentCall = null;
+        syncCallControlButtons();
     }
 
-    // ---- Screen sharing ---------------------------------------------------------
+    // ---- Camera + screen over WebSocket JPEG (works without ICE/TURN) ----------
+    function showLocalScreenPreview(stream) {
+        var localVideo = $("localVideo");
+        if (!localVideo || !stream) return;
+        localVideo.muted = true;
+        localVideo.setAttribute("playsinline", "");
+        localVideo.srcObject = stream;
+        localVideo.classList.add("contain");
+        show(localVideo);
+        localVideo.onloadedmetadata = function () { playMediaElement(localVideo); };
+        playMediaElement(localVideo);
+        var previewLabel = $("localPreviewLabel");
+        if (previewLabel) previewLabel.textContent = "Your screen";
+    }
+
+    function isCallFullscreen() {
+        var overlay = $("activeCallOverlay");
+        return !!(overlay && overlay.classList.contains("call-full-mode"));
+    }
+
+    function syncCallViewport() {
+        var overlay = $("activeCallOverlay");
+        if (!overlay || overlay.classList.contains("hidden")) return;
+        var vv = window.visualViewport;
+        if (!vv) return;
+        overlay.style.position = "fixed";
+        overlay.style.left = vv.offsetLeft + "px";
+        overlay.style.top = vv.offsetTop + "px";
+        overlay.style.width = vv.width + "px";
+        overlay.style.height = vv.height + "px";
+        overlay.style.right = "auto";
+        overlay.style.bottom = "auto";
+        overlay.style.maxHeight = "none";
+    }
+
+    function onCallOrientationChange() {
+        syncCallViewport();
+        setTimeout(syncCallViewport, 200);
+        setTimeout(syncCallViewport, 500);
+    }
+
+    function bindCallViewport() {
+        syncCallViewport();
+        if (state.callViewportBound) return;
+        state.callViewportBound = true;
+        var vv = window.visualViewport;
+        if (vv) {
+            vv.addEventListener("resize", syncCallViewport);
+            vv.addEventListener("scroll", syncCallViewport);
+        }
+        window.addEventListener("orientationchange", onCallOrientationChange);
+        window.addEventListener("resize", syncCallViewport);
+    }
+
+    function unbindCallViewport() {
+        var overlay = $("activeCallOverlay");
+        if (overlay) {
+            overlay.style.left = "";
+            overlay.style.top = "";
+            overlay.style.width = "";
+            overlay.style.height = "";
+            overlay.style.right = "";
+            overlay.style.bottom = "";
+            overlay.style.maxHeight = "";
+        }
+        if (!state.callViewportBound) return;
+        state.callViewportBound = false;
+        var vv = window.visualViewport;
+        if (vv) {
+            vv.removeEventListener("resize", syncCallViewport);
+            vv.removeEventListener("scroll", syncCallViewport);
+        }
+        window.removeEventListener("orientationchange", onCallOrientationChange);
+        window.removeEventListener("resize", syncCallViewport);
+    }
+
+    function setCallFullscreen(on) {
+        var overlay = $("activeCallOverlay");
+        var panel = overlay && overlay.querySelector(".call-overlay");
+        if (overlay) overlay.classList.toggle("call-full-mode", !!on);
+        if (panel) panel.classList.toggle("is-full", !!on);
+        var btn = $("fullCallBtn");
+        if (btn) {
+            btn.textContent = on ? "Exit" : "Full";
+            btn.classList.toggle("active", !!on);
+            btn.title = on ? "Exit full screen" : "Full screen";
+        }
+        syncCallViewport();
+        var isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (on && !isiOS && panel && panel.requestFullscreen) {
+            panel.requestFullscreen().catch(function () { });
+        } else if (!on && document.fullscreenElement) {
+            document.exitFullscreen().catch(function () { });
+        }
+    }
+
+    function toggleCallFullscreen() {
+        setCallFullscreen(!isCallFullscreen());
+    }
+
+    function clearRemoteScreen() {
+        var img = $("remoteScreen");
+        if (img) {
+            var prev = img.getAttribute("data-blob");
+            if (prev) {
+                try { URL.revokeObjectURL(prev); } catch (e) { }
+            }
+            img.removeAttribute("data-blob");
+            img.removeAttribute("src");
+            hide(img);
+        }
+        if (state.currentCall) {
+            state.currentCall.remoteScreenAt = 0;
+            state.currentCall.remoteMediaKind = "";
+        }
+        var label = $("remoteFallbackLabel");
+        if (label) label.textContent = "Waiting for picture";
+        updateRemoteMediaVisibility();
+    }
+
+    function captureVideoEl() {
+        var el = $("captureVideo");
+        if (el) return el;
+        el = document.createElement("video");
+        el.id = "captureVideo";
+        el.muted = true;
+        el.autoplay = true;
+        el.playsInline = true;
+        el.setAttribute("playsinline", "");
+        el.setAttribute("webkit-playsinline", "true");
+        el.style.cssText = "position:fixed;left:0;top:0;width:16px;height:16px;opacity:0.02;pointer-events:none;z-index:0;";
+        document.body.appendChild(el);
+        return el;
+    }
+
+    function bindCaptureStream(stream) {
+        var el = captureVideoEl();
+        if (el.srcObject !== stream) el.srcObject = stream;
+        playMediaElement(el);
+        return el;
+    }
+
+    function stopFramePump(call) {
+        if (!call || !call.framePump) return;
+        if (call.framePump.timer) clearInterval(call.framePump.timer);
+        call.framePump = null;
+        call.frameKind = "";
+    }
+
+    function startFramePump(call, kind) {
+        stopFramePump(call);
+        if (!call) return;
+        var canvas = document.createElement("canvas");
+        var ctx = canvas.getContext("2d", { alpha: false });
+        call.frameKind = kind;
+        call.framePump = {
+            canvas: canvas,
+            ctx: ctx,
+            sending: false,
+            timer: setInterval(function () { pumpFrame(call); }, kind === "screen" ? 120 : 250)
+        };
+    }
+
+    function pumpSource(call) {
+        if (call.screenStream) return bindCaptureStream(call.screenStream);
+        if (call.localStream && call.localStream.getVideoTracks().some(function (t) { return t.readyState === "live"; })) {
+            return bindCaptureStream(call.localStream);
+        }
+        return $("localVideo");
+    }
+
+    function pumpFrame(call) {
+        if (!state.currentCall || state.currentCall !== call) {
+            stopFramePump(call);
+            return;
+        }
+        var kind = call.frameKind || (call.screenStream ? "screen" : "camera");
+        if (kind === "screen" && !call.screenStream) {
+            stopFramePump(call);
+            return;
+        }
+        if (kind === "camera" && !isCameraOn(call)) {
+            stopFramePump(call);
+            return;
+        }
+        if (!call.framePump || call.framePump.sending) return;
+        var video = pumpSource(call);
+        if (!video || video.videoWidth < 2 || video.videoHeight < 2) return;
+        var maxEdge = kind === "screen" ? 1280 : 480;
+        var scale = Math.min(1, maxEdge / Math.max(video.videoWidth, video.videoHeight));
+        var w = Math.max(2, Math.round(video.videoWidth * scale));
+        var h = Math.max(2, Math.round(video.videoHeight * scale));
+        var canvas = call.framePump.canvas;
+        var ctx = call.framePump.ctx;
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        try {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.drawImage(video, 0, 0, w, h);
+        } catch (e) {
+            return;
+        }
+        call.framePump.sending = true;
+        encodeJpegFrame(call, canvas, kind, kind === "screen" ? 0.72 : 0.5);
+    }
+
+    function encodeJpegFrame(call, canvas, kind, quality) {
+        function finish(dataUrl) {
+            if (call.framePump) call.framePump.sending = false;
+            sendMediaJpeg(call, dataUrl, kind);
+        }
+        function tooLarge(blob) {
+            return blob && (blob.size * 4 / 3) > 420000;
+        }
+        if (!canvas.toBlob) {
+            try { finish(canvas.toDataURL("image/jpeg", quality)); } catch (e) { if (call.framePump) call.framePump.sending = false; }
+            return;
+        }
+        canvas.toBlob(function (blob) {
+            if (!blob || !state.currentCall || state.currentCall !== call) {
+                if (call.framePump) call.framePump.sending = false;
+                return;
+            }
+            if (tooLarge(blob) && quality > 0.45) {
+                encodeJpegFrame(call, canvas, kind, Math.max(0.45, quality - 0.2));
+                return;
+            }
+            var reader = new FileReader();
+            reader.onloadend = function () { finish(reader.result); };
+            reader.readAsDataURL(blob);
+        }, "image/jpeg", quality);
+    }
+
+    function sendMediaJpeg(call, dataUrl, kind) {
+        if (!call || !dataUrl || typeof dataUrl !== "string") return;
+        var comma = dataUrl.indexOf(",");
+        if (comma < 0) return;
+        var b64 = dataUrl.slice(comma + 1);
+        if (!b64 || b64.length > 450000) return;
+        sendSocket(WS.CallAudioData, {
+            callId: call.callId,
+            fromUserId: state.me.id,
+            toUserId: call.remoteUserId,
+            chatId: call.chatId,
+            audioData: b64,
+            mediaKind: kind || "camera",
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    function sendMediaSignal(call, kind) {
+        if (!call || !state.me) return;
+        sendSocket(WS.CallAudioData, {
+            callId: call.callId,
+            fromUserId: state.me.id,
+            toUserId: call.remoteUserId,
+            chatId: call.chatId,
+            audioData: "",
+            mediaKind: kind,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    function resampleFloat(input, inRate, outRate) {
+        if (!input || !input.length) return input;
+        if (Math.abs(inRate - outRate) < 1) return input;
+        var ratio = inRate / outRate;
+        var outLen = Math.max(1, Math.floor(input.length / ratio));
+        var out = new Float32Array(outLen);
+        var i;
+        for (i = 0; i < outLen; i++) {
+            var x = i * ratio;
+            var i0 = Math.floor(x);
+            var i1 = Math.min(i0 + 1, input.length - 1);
+            var f = x - i0;
+            out[i] = input[i0] * (1 - f) + input[i1] * f;
+        }
+        return out;
+    }
+
+    function floatToInt16Base64(float32) {
+        var samples = new Int16Array(float32.length);
+        var i;
+        for (i = 0; i < float32.length; i++) {
+            var s = Math.max(-1, Math.min(1, float32[i]));
+            samples[i] = s < 0 ? (s * 0x8000) : (s * 0x7fff);
+        }
+        var bytes = new Uint8Array(samples.buffer);
+        var binary = "";
+        var chunk = 0x8000;
+        for (i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+        }
+        return btoa(binary);
+    }
+
+    function base64ToInt16(b64) {
+        var binary = atob(b64);
+        var bytes = new Uint8Array(binary.length);
+        var i;
+        for (i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        if (bytes.byteOffset % 2) {
+            var copy = new Uint8Array(bytes.length);
+            copy.set(bytes);
+            bytes = copy;
+        }
+        return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+    }
+
+    function ensureCallAudioPlay() {
+        unlockAudio();
+        if (audioCtx && audioCtx.state === "suspended") {
+            try { audioCtx.resume(); } catch (e) { }
+        }
+    }
+
+    function playWsPcm(int16, sampleRate) {
+        ensureCallAudioPlay();
+        var ctx = audioCtx;
+        if (!ctx || !int16 || !int16.length) return;
+        var data = new Float32Array(int16.length);
+        var i;
+        for (i = 0; i < int16.length; i++) data[i] = int16[i] / 32768;
+        if (Math.abs(sampleRate - ctx.sampleRate) > 1) {
+            data = resampleFloat(data, sampleRate, ctx.sampleRate);
+            sampleRate = ctx.sampleRate;
+        }
+        var buffer;
+        try {
+            buffer = ctx.createBuffer(1, data.length, sampleRate);
+        } catch (e) {
+            buffer = ctx.createBuffer(1, data.length, ctx.sampleRate);
+        }
+        buffer.getChannelData(0).set(data);
+        var src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        var now = ctx.currentTime;
+        if (!callAudio.nextTime || callAudio.nextTime < now - 0.3) callAudio.nextTime = now + 0.04;
+        src.start(callAudio.nextTime);
+        callAudio.nextTime += buffer.duration;
+    }
+
+    function sendWsPcm(float32, inRate) {
+        if (!state.currentCall || !state.currentCall.accepted) return;
+        if (isMicMuted(state.currentCall)) return;
+        if (!state.socket || state.socket.readyState !== 1) return;
+        var pcm = resampleFloat(float32, inRate, 16000);
+        try {
+            sendSocket(WS.CallAudioData, {
+                callId: state.currentCall.callId,
+                fromUserId: state.me.id,
+                toUserId: state.currentCall.remoteUserId,
+                chatId: state.currentCall.chatId,
+                audioData: floatToInt16Base64(pcm),
+                mediaKind: "audio",
+                sampleRate: 16000,
+                timestamp: new Date().toISOString()
+            });
+        } catch (e) { /* ignore send errors */ }
+    }
+
+    function stopCallAudioSend() {
+        if (callAudio.processor) {
+            try { callAudio.processor.disconnect(); } catch (e) { }
+            callAudio.processor.onaudioprocess = null;
+        }
+        if (callAudio.source) {
+            try { callAudio.source.disconnect(); } catch (e) { }
+        }
+        if (callAudio.gain) {
+            try { callAudio.gain.disconnect(); } catch (e) { }
+        }
+        callAudio.processor = null;
+        callAudio.source = null;
+        callAudio.gain = null;
+        callAudio.sending = false;
+        callAudio.nextTime = 0;
+    }
+
+    function startCallAudioSend(stream) {
+        stopCallAudioSend();
+        if (!stream || !stream.getAudioTracks || !stream.getAudioTracks().length) return;
+        ensureCallAudioPlay();
+        var ctx = audioCtx;
+        if (!ctx) return;
+        if (ctx.state === "suspended") ctx.resume().catch(function () { });
+        var audioOnly = new MediaStream(stream.getAudioTracks());
+        var source = ctx.createMediaStreamSource(audioOnly);
+        var processor = ctx.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = function (ev) {
+            if (!state.currentCall) return;
+            sendWsPcm(ev.inputBuffer.getChannelData(0), ctx.sampleRate);
+        };
+        var gain = ctx.createGain();
+        gain.gain.value = 0;
+        source.connect(processor);
+        processor.connect(gain);
+        gain.connect(ctx.destination);
+        callAudio.source = source;
+        callAudio.processor = processor;
+        callAudio.gain = gain;
+    }
+
+    function handleCallAudioData(payload) {
+        if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId) return;
+        var kind = String(pick(payload, "mediaKind", "MediaKind") || "");
+        var data = pick(payload, "audioData", "AudioData") || "";
+        if (kind === "audio") {
+            if (!data) return;
+            try {
+                var rate = Number(pick(payload, "sampleRate", "SampleRate") || 16000);
+                playWsPcm(base64ToInt16(data), rate);
+            } catch (e) { /* drop a bad audio packet */ }
+            return;
+        }
+        if (kind === "screen-end") {
+            if (!state.currentCall.remoteMediaKind || state.currentCall.remoteMediaKind === "screen") clearRemoteScreen();
+            return;
+        }
+        if (kind === "camera-end") {
+            if (!state.currentCall.remoteMediaKind || state.currentCall.remoteMediaKind === "camera") clearRemoteScreen();
+            return;
+        }
+        if (kind !== "screen" && kind !== "camera" && String(data).indexOf("/9j/") !== 0) return;
+        if (kind !== "screen" && kind !== "camera") kind = "camera";
+        var img = $("remoteScreen");
+        if (!img || !data) return;
+        try {
+            var binary = atob(data);
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            var url = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+            var prev = img.getAttribute("data-blob");
+            img.onload = function () {
+                if (prev) {
+                    try { URL.revokeObjectURL(prev); } catch (e) { }
+                }
+            };
+            img.setAttribute("data-blob", url);
+            img.src = url;
+        } catch (e) {
+            img.src = "data:image/jpeg;base64," + data;
+        }
+        show(img);
+        state.currentCall.remoteScreenAt = Date.now();
+        state.currentCall.remoteMediaKind = kind;
+        markCallLive(state.currentCall);
+        var label = $("remoteFallbackLabel");
+        if (label) label.textContent = kind === "screen" ? "Shared screen" : "Camera";
+        updateRemoteMediaVisibility();
+    }
+
     function toggleScreenShare() {
         var call = state.currentCall;
-        if (!call || !call.pc) return;
+        if (!call) return;
         if (call.screenStream) {
             stopScreenShare(false);
             return;
         }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-            toast("Screen sharing is not supported in this browser.");
+            toast("This device cannot start screen share. Open the call on a computer to share.");
             return;
         }
         navigator.mediaDevices.getDisplayMedia({
             video: {
-                frameRate: { ideal: 10, max: 15 },
-                width: { max: 1920 },
-                height: { max: 1080 }
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 10, max: 15 }
             },
             audio: false
-        }).catch(function (err) {
-            if (err && err.name === "OverconstrainedError") {
-                return navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-            }
-            throw err;
         }).then(function (screenStream) {
-            if (!state.currentCall || state.currentCall !== call || !call.pc) {
+            if (!state.currentCall || state.currentCall !== call) {
                 screenStream.getTracks().forEach(function (track) { track.stop(); });
                 return;
             }
@@ -2683,31 +3216,21 @@
                 screenStream.getTracks().forEach(function (track) { track.stop(); });
                 return;
             }
+            screenTrack.enabled = true;
             try { screenTrack.contentHint = "detail"; } catch (e) { }
             screenTrack.onended = function () { stopScreenShare(false); };
-            return attachTrackToPeer(call, screenTrack, screenStream).then(function (needsRenegotiation) {
-                if (!state.currentCall || state.currentCall !== call) {
-                    screenStream.getTracks().forEach(function (track) { track.stop(); });
-                    return;
-                }
-                call.screenStream = screenStream;
-                call.screenSender = findSenderForKind(call.pc, "video");
-                applyVideoSenderParams(call.screenSender, true);
-                var localVideo = $("localVideo");
-                if (localVideo) {
-                    localVideo.srcObject = screenStream;
-                    localVideo.classList.add("contain");
-                    show(localVideo);
-                }
-                var previewLabel = $("localPreviewLabel");
-                if (previewLabel) previewLabel.textContent = "Your screen";
-                var btn = $("screenShareCallBtn");
-                if (btn) btn.classList.add("active");
-                updateRemoteMediaVisibility();
-                if (needsRenegotiation) return renegotiate(call);
-            });
-        }).then(function () {
-            if (state.currentCall && state.currentCall.screenStream) toast("Screen sharing started");
+            call.screenStream = screenStream;
+            showLocalScreenPreview(screenStream);
+            startFramePump(call, "screen");
+            syncCallControlButtons();
+            toast("Screen sharing started");
+            if (call.pc) {
+                attachTrackToPeer(call, screenTrack, screenStream).then(function () {
+                    if (!state.currentCall || state.currentCall !== call) return;
+                    call.screenSender = findSenderForKind(call.pc, "video");
+                    if (call.pc.connectionState === "connected") renegotiate(call);
+                }).catch(function () { /* WebSocket frames are the reliable path */ });
+            }
         }).catch(function (err) {
             if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) return;
             toast("Screen share unavailable: " + (err && err.message ? err.message : err));
@@ -2716,10 +3239,16 @@
 
     function stopScreenShare(silent) {
         var call = state.currentCall;
-        if (!call || !call.screenStream) return;
+        if (!call) return;
+        var wasSharing = !!call.screenStream;
+        if (call.frameKind === "screen") stopFramePump(call);
+        if (!wasSharing) return;
         call.screenStream.getTracks().forEach(function (track) { track.stop(); });
+        if (!silent) sendMediaSignal(call, "screen-end");
         var cameraTrack = call.localStream && call.localStream.getVideoTracks()[0];
-        var sender = call.screenSender || findSenderForKind(call.pc, "video");
+        var sender = call.screenSender || (call.pc ? findSenderForKind(call.pc, "video") : null);
+        call.screenStream = null;
+        call.screenSender = null;
         if (sender) {
             sender.replaceTrack(cameraTrack || null).catch(function () { });
             applyVideoSenderParams(sender, false);
@@ -2728,46 +3257,155 @@
         if (localVideo) {
             localVideo.srcObject = call.localStream || null;
             localVideo.classList.remove("contain");
-            if (!(call.localStream && call.localStream.getVideoTracks().length) || call.callType !== "video") hide(localVideo);
-            else show(localVideo);
+            if (isCameraOn(call)) show(localVideo);
+            else hide(localVideo);
         }
         var previewLabel = $("localPreviewLabel");
         if (previewLabel) previewLabel.textContent = "You";
-        call.screenStream = null;
-        call.screenSender = null;
-        var btn = $("screenShareCallBtn");
-        if (btn) btn.classList.remove("active");
+        if (isCameraOn(call)) startFramePump(call, "camera");
         updateRemoteMediaVisibility();
+        syncCallControlButtons();
         if (!silent) toast("Screen sharing stopped");
     }
 
     function applyLocalStream(stream) {
         if (!state.currentCall) return Promise.resolve();
-        state.currentCall.localStream = stream;
-        var pc = state.currentCall.pc;
+        var call = state.currentCall;
+        call.localStream = stream;
+        var pc = call.pc;
         var attachments = [];
         if (pc) {
             stream.getTracks().forEach(function (track) {
-                attachments.push(attachTrackToPeer(state.currentCall, track, stream).catch(function () {
+                attachments.push(attachTrackToPeer(call, track, stream).catch(function () {
                     try { pc.addTrack(track, stream); } catch (e) { }
                 }));
             });
         }
+        call.cameraEnabled = stream.getVideoTracks().some(function (t) { return t.readyState === "live" && t.enabled; });
+        call.micMuted = !stream.getAudioTracks().some(function (t) { return t.readyState === "live" && t.enabled; });
         var localVideo = $("localVideo");
         if (localVideo && stream) {
             localVideo.srcObject = stream;
             localVideo.classList.remove("contain");
-            if (state.currentCall.callType === "video") show(localVideo);
-            else hide(localVideo);
+            if (call.cameraEnabled && !call.screenStream) show(localVideo);
+            else if (!call.screenStream) hide(localVideo);
         }
+        if (call.cameraEnabled && !call.screenStream) startFramePump(call, "camera");
+        startCallAudioSend(stream);
+        syncCallControlButtons();
         return Promise.all(attachments);
     }
 
     function requestLocalMedia(callType) {
+        var wantVideo = callType === "video";
         return navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: callType === "video" ? { width: 640, height: 480 } : false
+            audio: AUDIO_CONSTRAINTS,
+            video: wantVideo ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } : false
+        }).catch(function (err) {
+            if (!wantVideo) throw err;
+            toast("Camera unavailable — continuing with microphone");
+            return navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: false });
         });
+    }
+
+    function getCallAudioTracks(call) {
+        var found = [];
+        function add(track) {
+            if (track && track.kind === "audio" && found.indexOf(track) === -1) found.push(track);
+        }
+        if (call && call.localStream) call.localStream.getAudioTracks().forEach(add);
+        if (call && call.pc && call.pc.getSenders) {
+            call.pc.getSenders().forEach(function (sender) { add(sender.track); });
+        }
+        return found;
+    }
+
+    function isMicMuted(call) {
+        var tracks = getCallAudioTracks(call).filter(function (t) { return t.readyState === "live"; });
+        if (!tracks.length) return true;
+        return tracks.every(function (t) { return !t.enabled; });
+    }
+
+    function isCameraOn(call) {
+        if (!call || call.screenStream) return false;
+        var tracks = call.localStream ? call.localStream.getVideoTracks() : [];
+        return tracks.some(function (t) { return t.readyState === "live" && t.enabled; });
+    }
+
+    function setMicMuted(call, muted) {
+        getCallAudioTracks(call).forEach(function (track) { track.enabled = !muted; });
+        call.micMuted = muted;
+        syncCallControlButtons();
+    }
+
+    function turnCameraOff(call) {
+        if (!call) return;
+        if (call.frameKind === "camera") stopFramePump(call);
+        sendMediaSignal(call, "camera-end");
+        var tracks = call.localStream ? call.localStream.getVideoTracks() : [];
+        tracks.forEach(function (track) {
+            track.enabled = false;
+            track.stop();
+            if (call.localStream) call.localStream.removeTrack(track);
+        });
+        if (call.pc) {
+            var sender = findSenderForKind(call.pc, "video");
+            if (sender) sender.replaceTrack(null).catch(function () { });
+        }
+        call.cameraEnabled = false;
+        var localVideo = $("localVideo");
+        if (localVideo && !call.screenStream) {
+            localVideo.srcObject = call.localStream || null;
+            hide(localVideo);
+        }
+        var capture = $("captureVideo");
+        if (capture && !call.screenStream) capture.srcObject = null;
+        syncCallControlButtons();
+    }
+
+    function syncCallControlButtons() {
+        var call = state.currentCall;
+        var muteBtn = $("muteCallBtn");
+        var camBtn = $("cameraCallBtn");
+        var shareBtn = $("screenShareCallBtn");
+        var fullBtn = $("fullCallBtn");
+        if (muteBtn) {
+            var muted = !call || isMicMuted(call);
+            muteBtn.classList.toggle("call-off", muted);
+            muteBtn.classList.remove("active");
+            muteBtn.textContent = muted ? "Mute" : "Mic";
+            muteBtn.title = muted ? "Unmute microphone" : "Mute microphone";
+            muteBtn.setAttribute("aria-label", muteBtn.title);
+            muteBtn.setAttribute("aria-pressed", muted ? "true" : "false");
+        }
+        if (camBtn) {
+            var camOn = !!(call && isCameraOn(call));
+            camBtn.classList.toggle("call-off", !camOn);
+            camBtn.classList.toggle("active", camOn);
+            camBtn.textContent = camOn ? "Cam" : "Cam";
+            camBtn.title = camOn ? "Turn camera off" : "Turn camera on";
+            camBtn.setAttribute("aria-label", camBtn.title);
+            camBtn.setAttribute("aria-pressed", camOn ? "true" : "false");
+        }
+        if (shareBtn) {
+            var sharing = !!(call && call.screenStream);
+            shareBtn.classList.toggle("active", sharing);
+            shareBtn.textContent = sharing ? "Sharing" : "Share";
+            shareBtn.title = sharing ? "Stop sharing" : "Share screen";
+            shareBtn.setAttribute("aria-label", shareBtn.title);
+        }
+        if (fullBtn) {
+            var full = isCallFullscreen();
+            fullBtn.textContent = full ? "Exit" : "Full";
+            fullBtn.classList.toggle("active", full);
+            fullBtn.title = full ? "Exit full screen" : "Full screen";
+            fullBtn.setAttribute("aria-label", fullBtn.title);
+        }
+        var preview = $("localPreview");
+        if (preview) {
+            var showMe = !!(call && (call.screenStream || isCameraOn(call)));
+            preview.classList.toggle("hidden", !showMe);
+        }
     }
 
     // ---- Call history reporting --------------------------------------------
@@ -2854,27 +3492,34 @@
         if (!call || !call.incoming) return;
         call.accepted = true;
         hideIncomingCall();
+        unlockCallPlayback();
         showActiveCall();
+        markCallLive(call);
         getIceServers().then(function () {
+            if (!state.currentCall || state.currentCall !== call) return;
             call.pc = createPeerConnection();
-            requestLocalMedia(call.callType).then(function (stream) {
-                return applyLocalStream(stream).then(function () {
+            return requestLocalMedia(call.callType).catch(function () {
+                toast("Microphone unavailable. You can still see a shared screen.");
+                return null;
+            }).then(function (stream) {
+                var ready = stream ? applyLocalStream(stream) : Promise.resolve();
+                return ready.then(function () {
                     sendSocket(WS.CallAnswer, {
                         callId: call.callId,
                         fromUserId: state.me.id,
                         toUserId: call.remoteUserId,
                         timestamp: new Date().toISOString()
                     });
-                    if (call.timeoutHandle) clearTimeout(call.timeoutHandle);
-                    call.timeoutHandle = setTimeout(function () {
-                        if (state.currentCall && state.currentCall.callId === call.callId) {
-                            endCurrentCall("Call failed to connect");
-                        }
-                    }, 30000);
+                    syncCallControlButtons();
                 });
-            }).catch(function (err) {
-                toast("Media error: " + (err.message || err));
-                endCurrentCall();
+            });
+        }).catch(function (err) {
+            toast("Call setup issue: " + (err.message || err));
+            sendSocket(WS.CallAnswer, {
+                callId: call.callId,
+                fromUserId: state.me.id,
+                toUserId: call.remoteUserId,
+                timestamp: new Date().toISOString()
             });
         });
     }
@@ -2912,21 +3557,83 @@
     }
 
     function toggleMicrophone() {
-        if (!state.currentCall || !state.currentCall.localStream) return;
-        state.currentCall.localStream.getAudioTracks().forEach(function (track) {
-            track.enabled = !track.enabled;
-        });
-        var btn = $("muteCallBtn");
-        if (btn) btn.classList.toggle("active", !state.currentCall.localStream.getAudioTracks().some(function (t) { return t.enabled; }));
+        var call = state.currentCall;
+        if (!call) return;
+        var live = getCallAudioTracks(call).filter(function (t) { return t.readyState === "live"; });
+        if (!live.length) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                toast("Microphone is not supported in this browser.");
+                return;
+            }
+            navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS }).then(function (stream) {
+                if (!state.currentCall || state.currentCall !== call) {
+                    stream.getTracks().forEach(function (track) { track.stop(); });
+                    return;
+                }
+                var track = stream.getAudioTracks()[0];
+                if (!track) return;
+                if (!call.localStream) call.localStream = new MediaStream();
+                call.localStream.addTrack(track);
+                if (call.pc) attachTrackToPeer(call, track, call.localStream);
+                setMicMuted(call, false);
+                startCallAudioSend(call.localStream);
+                toast("Microphone on");
+            }).catch(function (err) {
+                toast("Microphone unavailable: " + (err.message || err));
+            });
+            return;
+        }
+        setMicMuted(call, !isMicMuted(call));
+        toast(isMicMuted(call) ? "Microphone muted" : "Microphone on");
     }
 
     function toggleCamera() {
-        if (!state.currentCall || !state.currentCall.localStream) return;
-        state.currentCall.localStream.getVideoTracks().forEach(function (track) {
-            track.enabled = !track.enabled;
+        var call = state.currentCall;
+        if (!call) return;
+        if (call.screenStream) {
+            toast("Stop sharing your screen to use the camera.");
+            return;
+        }
+        if (isCameraOn(call)) {
+            turnCameraOff(call);
+            toast("Camera off");
+            return;
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            toast("Camera is not supported in this browser.");
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+            audio: false
+        }).then(function (camStream) {
+            if (!state.currentCall || state.currentCall !== call) {
+                camStream.getTracks().forEach(function (track) { track.stop(); });
+                return;
+            }
+            var track = camStream.getVideoTracks()[0];
+            if (!track) return;
+            if (!call.localStream) call.localStream = new MediaStream();
+            call.localStream.getVideoTracks().forEach(function (old) {
+                old.stop();
+                call.localStream.removeTrack(old);
+            });
+            call.localStream.addTrack(track);
+            if (call.pc) attachTrackToPeer(call, track, call.localStream);
+            call.cameraEnabled = true;
+            var localVideo = $("localVideo");
+            if (localVideo) {
+                localVideo.srcObject = call.localStream;
+                localVideo.classList.remove("contain");
+                show(localVideo);
+                playMediaElement(localVideo);
+            }
+            startFramePump(call, "camera");
+            syncCallControlButtons();
+            toast("Camera on");
+        }).catch(function (err) {
+            toast("Could not turn camera on: " + (err.message || err));
         });
-        var btn = $("cameraCallBtn");
-        if (btn) btn.classList.toggle("active", !state.currentCall.localStream.getVideoTracks().some(function (t) { return t.enabled; }));
     }
 
     function handleCallRequest(payload) {
@@ -2961,22 +3668,25 @@
         if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId) return;
         var call = state.currentCall;
         call.accepted = true;
+        markCallLive(call);
+        showActiveCall();
 
         var ensureReady = call.pc
             ? Promise.resolve()
             : getIceServers().then(function () {
                   call.pc = createPeerConnection();
-                  return requestLocalMedia(call.callType).then(applyLocalStream);
+                  return requestLocalMedia(call.callType).then(applyLocalStream).catch(function () { return null; });
               });
 
         ensureReady.then(function () {
-            return call.pc.createOffer();
-        }).then(function (offer) {
-            return call.pc.setLocalDescription(offer);
-        }).then(function () {
-            sendLocalDescription(call);
-            showActiveCall();
-        }).catch(function (err) { toast("Call failed: " + (err.message || err)); endCurrentCall(); });
+            if (!call.pc) return;
+            return call.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
+                .then(function (offer) { return call.pc.setLocalDescription(offer); })
+                .then(function () { sendLocalDescription(call); });
+        }).catch(function (err) {
+            console.warn("Voice setup failed", err);
+            toast("Voice setup failed. Screen share still works.");
+        });
     }
 
     function handleCallSdpOffer(payload) {
@@ -2990,7 +3700,7 @@
             call.pc = createPeerConnection();
             return requestLocalMedia(call.callType).then(function (stream) {
                 return applyLocalStream(stream);
-            });
+            }).catch(function () { return null; });
         });
 
         var ignored = false;
@@ -3023,13 +3733,9 @@
             sendLocalDescription(call);
             showActiveCall();
             updateRemoteMediaVisibility();
+            if (call.queuedRenegotiate) renegotiate(call);
         }).catch(function (err) {
-            if (call.everConnected) {
-                console.warn("SDP offer error during call", err);
-                return;
-            }
-            toast("Answer error: " + (err.message || err));
-            endCurrentCall();
+            console.warn("SDP offer error during call", err);
         });
     }
 
@@ -3041,24 +3747,23 @@
         call.pc.setRemoteDescription({ type: "answer", sdp: sdp }).then(function () {
             flushPendingIce(call);
             updateRemoteMediaVisibility();
+            if (call.queuedRenegotiate) renegotiate(call);
         }).catch(function (err) {
-            if (call.everConnected) {
-                console.warn("SDP answer error during call", err);
-                return;
-            }
-            toast("Unable to set remote answer: " + (err.message || err));
-            endCurrentCall();
+            console.warn("SDP answer error during call", err);
         });
     }
 
     function handleCallIceCandidate(payload) {
         if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId || !state.currentCall.pc) return;
-        var candidate = {
+        var candidateInit = {
             candidate: pick(payload, "candidate", "Candidate"),
             sdpMid: pick(payload, "sdpMid", "SdpMid"),
             sdpMLineIndex: pick(payload, "sdpMLineIndex", "SdpMLineIndex")
         };
-        enqueueOrAddIce(state.currentCall, candidate);
+        var ufrag = pick(payload, "usernameFragment", "UsernameFragment");
+        if (ufrag) candidateInit.usernameFragment = ufrag;
+        if (!candidateInit.candidate) return;
+        enqueueOrAddIce(state.currentCall, candidateInit);
     }
 
     function handleCallEnd(payload) {
@@ -3077,6 +3782,7 @@
         var chat = state.chats.find(function (c) { return c.id === state.activeChatId; });
         if (!chat || !isPersonalChat(chat)) { toast("Calls are available only in direct chats."); return; }
         sendCallRequest(chat, callType).then(function () {
+            unlockCallPlayback();
             showActiveCall();
             toast("Calling " + (otherParticipant(chat).displayName || otherParticipant(chat).username));
         }).catch(function (err) {
@@ -3283,12 +3989,15 @@
             case WS.CallEnd:
                 handleCallEnd(payload);
                 break;
+            case WS.CallAudioData:
+                handleCallAudioData(payload);
+                break;
             case WS.CallTimeout:
                 handleCallTimeout(payload);
                 break;
             case WS.Error:
                 if (error) toast(error);
-                if (state.currentCall && !state.currentCall.everConnected) {
+                if (state.currentCall && !state.currentCall.accepted && /not available|rate limit/i.test(String(error || ""))) {
                     recordCallHistory(state.currentCall, "Failed");
                     cleanupCall();
                 }
@@ -4133,6 +4842,14 @@
         if ($("muteCallBtn")) $("muteCallBtn").addEventListener("click", toggleMicrophone);
         if ($("cameraCallBtn")) $("cameraCallBtn").addEventListener("click", toggleCamera);
         if ($("screenShareCallBtn")) $("screenShareCallBtn").addEventListener("click", toggleScreenShare);
+        if ($("fullCallBtn")) $("fullCallBtn").addEventListener("click", function (e) {
+            e.stopPropagation();
+            toggleCallFullscreen();
+        });
+        if ($("remoteMediaTile")) $("remoteMediaTile").addEventListener("dblclick", toggleCallFullscreen);
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && isCallFullscreen()) setCallFullscreen(false);
+        });
 
         localStorage.removeItem("nexus_token");
         restoreSession();

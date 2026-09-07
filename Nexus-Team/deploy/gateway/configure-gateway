@@ -4,6 +4,10 @@ set -eu
 
 : "${PUBLIC_IP:?PUBLIC_IP is required}"
 
+# Windows scp/editors often leave a CR; that fails the IPv4 check and
+# points nginx/Certbot at /etc/letsencrypt/live/<ip>\r/.
+PUBLIC_IP="$(printf '%s' "$PUBLIC_IP" | tr -d '\r')"
+
 case "$PUBLIC_IP" in
   *[!0-9.]*|'')
     echo "PUBLIC_IP must be an IPv4 address" >&2
@@ -11,15 +15,20 @@ case "$PUBLIC_IP" in
     ;;
 esac
 
+apply_template() {
+  sed "s/__PUBLIC_IP__/$PUBLIC_IP/g" "$1" > /etc/nginx/conf.d/default.conf
+  nginx -t
+}
+
 certificate_directory="/etc/letsencrypt/live/$PUBLIC_IP"
 if [ -s "$certificate_directory/fullchain.pem" ] && [ -s "$certificate_directory/privkey.pem" ]; then
-  template="/etc/nexus-gateway/https.conf.template"
+  if ! apply_template /etc/nexus-gateway/https.conf.template; then
+    echo "HTTPS certificate present but nginx rejected it; serving HTTP until TLS is repaired." >&2
+    apply_template /etc/nexus-gateway/http.conf.template
+  fi
 else
-  template="/etc/nexus-gateway/http.conf.template"
+  apply_template /etc/nexus-gateway/http.conf.template
 fi
-
-sed "s/__PUBLIC_IP__/$PUBLIC_IP/g" "$template" > /etc/nginx/conf.d/default.conf
-nginx -t
 
 if [ "${1:-}" = "reload" ]; then
   nginx -s reload

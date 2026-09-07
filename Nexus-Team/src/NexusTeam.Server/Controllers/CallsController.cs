@@ -193,15 +193,21 @@ namespace NexusTeam.Server.Controllers
 
                 iceServers.Add(new IceServerDto
                 {
-                    Urls = new[]
-                    {
-                        $"turn:{turnHost}:3478?transport=udp",
-                        $"turn:{turnHost}:3478?transport=tcp",
-                        $"turn:{turnHost}:5349?transport=tcp",
-                    },
+                    Urls = new[] { $"turn:{turnHost}:3478?transport=tcp" },
                     Username = username,
                     Credential = credential,
-                    CredentialType = "password",
+                });
+                iceServers.Add(new IceServerDto
+                {
+                    Urls = new[] { $"turn:{turnHost}:3478?transport=udp" },
+                    Username = username,
+                    Credential = credential,
+                });
+                iceServers.Add(new IceServerDto
+                {
+                    Urls = new[] { $"turn:{turnHost}:5349?transport=tcp" },
+                    Username = username,
+                    Credential = credential,
                 });
             }
             else

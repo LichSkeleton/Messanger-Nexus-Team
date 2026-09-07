@@ -1,0 +1,7 @@
+# Linux VM only. Host networking lets browsers reach TURN relay ports
+# without Docker UDP DNAT, which otherwise drops WebRTC media.
+services:
+  turn:
+    network_mode: host
+    ports: !reset []
+    networks: !reset []

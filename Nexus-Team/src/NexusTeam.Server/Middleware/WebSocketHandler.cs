@@ -38,6 +38,21 @@ namespace NexusTeam.Server.Middleware
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         };
 
+        private static bool TryGetPayloadString(JsonElement root, out string? value, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (root.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.String)
+                {
+                    value = element.GetString();
+                    return true;
+                }
+            }
+
+            value = null;
+            return false;
+        }
+
         private readonly RequestDelegate next;
         private readonly IWebSocketConnectionManager connectionManager;
         private readonly IJwtTokenService jwtTokenService;
@@ -960,7 +975,11 @@ namespace NexusTeam.Server.Middleware
             IChatService chatService,
             Services.Abstractions.ICallHistoryService callHistoryService)
         {
-            this.logger.Information("HandleCallMessageAsync called: Type={Type}, FromUserId={FromUserId}", envelope.Type, fromUserId);
+            var isMediaRelay = envelope.Type == NexusTeam.Shared.Enums.WebSocketMessageType.CallAudioData;
+            if (!isMediaRelay)
+            {
+                this.logger.Information("HandleCallMessageAsync called: Type={Type}, FromUserId={FromUserId}", envelope.Type, fromUserId);
+            }
 
             if (!envelope.Payload.HasValue)
             {
@@ -982,41 +1001,50 @@ namespace NexusTeam.Server.Middleware
                 }
 
                 var payloadText = envelope.Payload.Value.GetRawText();
-                this.logger.Debug("Call message payload: {Payload}", payloadText);
+                if (!isMediaRelay)
+                {
+                    this.logger.Debug("Call message payload: {Payload}", payloadText);
+                }
 
                 using var doc = JsonDocument.Parse(payloadText);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("toUserId", out var toUserIdElement))
+                if (!TryGetPayloadString(root, out var toUserId, "toUserId", "ToUserId") || string.IsNullOrEmpty(toUserId))
                 {
                     this.logger.Warning("Call payload from {UserId} is missing toUserId", fromUserId);
                     return;
                 }
 
-                var toUserId = toUserIdElement.GetString();
-                if (string.IsNullOrEmpty(toUserId))
-                {
-                    this.logger.Warning("Call message received with empty toUserId from user {UserId}", fromUserId);
-                    return;
-                }
-
                 string? chatId = null;
-                if (root.TryGetProperty("chatId", out var chatIdElement))
+                if (TryGetPayloadString(root, out var parsedChatId, "chatId", "ChatId"))
                 {
-                    chatId = chatIdElement.GetString();
+                    chatId = parsedChatId;
                 }
 
                 if (!await this.IsValidCallTargetAsync(fromUserId, toUserId, chatId, chatService))
                 {
+                    if (isMediaRelay)
+                    {
+                        return;
+                    }
+
                     this.logger.Warning("Invalid call target from {FromUserId} to {ToUserId}", fromUserId, toUserId);
                     await this.SendErrorToUserAsync(fromUserId, "You can only call a chat participant with an active direct conversation.");
                     return;
                 }
 
                 var connectionIds = this.connectionManager.GetConnectionIdsByUserId(toUserId);
-                this.logger.Information("Recipient {ToUserId} has {Count} active connection(s)", toUserId, connectionIds.Count());
+                if (!isMediaRelay)
+                {
+                    this.logger.Information("Recipient {ToUserId} has {Count} active connection(s)", toUserId, connectionIds.Count());
+                }
                 if (!connectionIds.Any())
                 {
+                    if (isMediaRelay)
+                    {
+                        return;
+                    }
+
                     this.logger.Warning("Recipient {ToUserId} has no active connections, cannot forward call message", toUserId);
                     await this.SendErrorToUserAsync(fromUserId, "Recipient is not available for calls.");
 
@@ -1048,11 +1076,14 @@ namespace NexusTeam.Server.Middleware
                 var message = JsonSerializer.Serialize(forwardEnvelope, options);
                 await this.connectionManager.BroadcastToUserAsync(toUserId, message, CancellationToken.None);
 
-                this.logger.Information(
-                    "Call message {MessageType} forwarded from user {FromUserId} to user {ToUserId}",
-                    envelope.Type,
-                    fromUserId,
-                    toUserId);
+                if (!isMediaRelay)
+                {
+                    this.logger.Information(
+                        "Call message {MessageType} forwarded from user {FromUserId} to user {ToUserId}",
+                        envelope.Type,
+                        fromUserId,
+                        toUserId);
+                }
             }
             catch (JsonException ex)
             {
