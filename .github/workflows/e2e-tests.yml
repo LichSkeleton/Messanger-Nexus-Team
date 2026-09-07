@@ -8,6 +8,7 @@ on:
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/src/**'
       - 'Nexus-Team/tests/e2e/**'
+      - '.github/scripts/**'
       - '.github/workflows/e2e-tests.yml'
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/src/**'
       - 'Nexus-Team/tests/e2e/**'
+      - '.github/scripts/**'
       - '.github/workflows/e2e-tests.yml'
   workflow_dispatch:
 
@@ -82,10 +84,11 @@ jobs:
 
       - name: Generate dynamic E2E count badge
         id: badge
-        if: always() && steps.scope.outputs.run == 'true'
+        if: always() && steps.scope.outputs.run == 'true' && steps.baseline.outcome == 'success'
         run: >-
           python3 .github/scripts/create-test-badge.py
           --label "E2E tests"
+          --expected-summaries 1
           --baseline-log "$RUNNER_TEMP/e2e-baseline.log"
           --regression-log "$RUNNER_TEMP/e2e-regressions.log"
           --output "$RUNNER_TEMP/e2e-tests.json"

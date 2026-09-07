@@ -1038,6 +1038,7 @@ namespace NexusTeam.Server.Middleware
                 {
                     this.logger.Information("Recipient {ToUserId} has {Count} active connection(s)", toUserId, connectionIds.Count());
                 }
+
                 if (!connectionIds.Any())
                 {
                     if (isMediaRelay)

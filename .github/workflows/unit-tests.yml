@@ -8,6 +8,7 @@ on:
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/src/**'
       - 'Nexus-Team/tests/unit/**'
+      - '.github/scripts/**'
       - '.github/workflows/unit-tests.yml'
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - 'Nexus-Team/docker-compose.yaml'
       - 'Nexus-Team/src/**'
       - 'Nexus-Team/tests/unit/**'
+      - '.github/scripts/**'
       - '.github/workflows/unit-tests.yml'
   workflow_dispatch:
 
@@ -81,10 +83,11 @@ jobs:
 
       - name: Generate dynamic unit-test count badge
         id: badge
-        if: always() && steps.scope.outputs.run == 'true'
+        if: always() && steps.scope.outputs.run == 'true' && steps.baseline.outcome == 'success'
         run: >-
           python3 .github/scripts/create-test-badge.py
           --label "unit tests"
+          --expected-summaries 2
           --baseline-log "$RUNNER_TEMP/unit-baseline.log"
           --regression-log "$RUNNER_TEMP/unit-regressions.log"
           --output "$RUNNER_TEMP/unit-tests.json"
