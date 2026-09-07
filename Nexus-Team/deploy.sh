@@ -233,6 +233,12 @@ compose() {
   docker compose --profile production "$@"
 }
 
+# certbot is on the "tools" profile so `compose up` does not start it as a
+# long-running container. First-time TLS still needs that service for `run`.
+compose_certbot() {
+  docker compose --profile production --profile tools "$@"
+}
+
 wait_for_healthy_container() {
   local container_name="$1"
   local deadline=$((SECONDS + health_timeout))
@@ -341,7 +347,7 @@ wait_for_healthy_container nexusteam_web || rollback
 wait_for_healthy_container nexusteam_gateway || rollback
 
 public_ip="$(env_value PUBLIC_IP)"
-if ! compose run --interactive=false -T --rm --no-deps --entrypoint /bin/sh certbot \
+if ! compose_certbot run --interactive=false -T --rm --no-deps --entrypoint /bin/sh certbot \
   -c "test -s /etc/letsencrypt/live/$public_ip/fullchain.pem"; then
   log "Requesting a trusted short-lived TLS certificate for $public_ip..."
   certbot_arguments=(
@@ -359,7 +365,7 @@ if ! compose run --interactive=false -T --rm --no-deps --entrypoint /bin/sh cert
   else
     certbot_arguments+=(--register-unsafely-without-email)
   fi
-  compose run --interactive=false -T --rm --no-deps certbot "${certbot_arguments[@]}" || rollback
+  compose_certbot run --interactive=false -T --rm --no-deps certbot "${certbot_arguments[@]}" || rollback
 fi
 
 compose exec -T gateway /usr/local/bin/configure-gateway reload || rollback

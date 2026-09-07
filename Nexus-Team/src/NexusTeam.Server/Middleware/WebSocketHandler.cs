@@ -2,6 +2,7 @@ namespace NexusTeam.Server.Middleware
 {
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Linq;
     using System.Net.WebSockets;
     using System.Text;
@@ -147,6 +148,56 @@ namespace NexusTeam.Server.Middleware
             await this.next(context);
         }
 
+        /// <summary>
+        /// Reads a complete WebSocket text message, reassembling fragmented frames.
+        /// SDP offers for video/screen-share easily exceed a single 4 KiB receive buffer.
+        /// </summary>
+        private async Task<(WebSocketReceiveResult Result, string? Text)> ReceiveTextMessageAsync(
+            WebSocket webSocket,
+            CancellationToken cancellationToken)
+        {
+            const int maxMessageBytes = 512 * 1024;
+            var buffer = new byte[16 * 1024];
+            using var payload = new MemoryStream();
+            WebSocketReceiveResult result;
+            do
+            {
+                result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                {
+                    return (result, null);
+                }
+
+                if (result.MessageType != System.Net.WebSockets.WebSocketMessageType.Text)
+                {
+                    while (!result.EndOfMessage && webSocket.State == WebSocketState.Open)
+                    {
+                        result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                        if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                        {
+                            return (result, null);
+                        }
+                    }
+
+                    this.logger.Warning("Ignoring non-text WebSocket frame of type {MessageType}", result.MessageType);
+                    return (result, null);
+                }
+
+                if (payload.Length + result.Count > maxMessageBytes)
+                {
+                    throw new InvalidOperationException($"WebSocket message exceeds the {maxMessageBytes} byte limit.");
+                }
+
+                if (result.Count > 0)
+                {
+                    payload.Write(buffer, 0, result.Count);
+                }
+            }
+            while (!result.EndOfMessage);
+
+            return (result, Encoding.UTF8.GetString(payload.ToArray()));
+        }
+
         private async Task HandleWebSocketAsync(WebSocket webSocket, HttpContext context)
         {
             string? userId = null;
@@ -164,7 +215,7 @@ namespace NexusTeam.Server.Middleware
 
             try
             {
-                var buffer = new byte[1024 * 4];
+                string? messageText = null;
 
                 using var authTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
@@ -176,14 +227,20 @@ namespace NexusTeam.Server.Middleware
                         return;
                     }
 
-                    receiveResult = await webSocket.ReceiveAsync(
-                        new ArraySegment<byte>(buffer),
-                        authTimeoutCts.Token);
+                    var first = await this.ReceiveTextMessageAsync(webSocket, authTimeoutCts.Token);
+                    receiveResult = first.Result;
+                    messageText = first.Text;
                 }
                 catch (OperationCanceledException)
                 {
                     this.logger.Warning("WebSocket authentication timeout - no message received within 10 seconds");
                     await this.CloseWebSocketSafelyAsync(webSocket, WebSocketCloseStatus.PolicyViolation, "Authentication timeout");
+                    return;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    this.logger.Warning(ex, "Rejected WebSocket message during authentication");
+                    await this.CloseWebSocketSafelyAsync(webSocket, WebSocketCloseStatus.MessageTooBig, "Message too large");
                     return;
                 }
                 catch (WebSocketException wsEx) when (webSocket.State == WebSocketState.Aborted || webSocket.State == WebSocketState.Closed)
@@ -199,8 +256,26 @@ namespace NexusTeam.Server.Middleware
 
                 while (webSocket.State == WebSocketState.Open && !receiveResult.CloseStatus.HasValue)
                 {
-                    var messageText = Encoding.UTF8.GetString(buffer, 0, receiveResult.Count);
-                    this.logger.Information("Received WebSocket message text: {MessageText}", messageText);
+                    if (messageText == null)
+                    {
+                        try
+                        {
+                            var nextEmpty = await this.ReceiveTextMessageAsync(webSocket, CancellationToken.None);
+                            receiveResult = nextEmpty.Result;
+                            messageText = nextEmpty.Text;
+                        }
+                        catch (WebSocketException wsEx) when (webSocket.State == WebSocketState.Aborted || webSocket.State == WebSocketState.Closed)
+                        {
+                            this.logger.Debug("WebSocket closed during message receive: {State}, {Message}", webSocket.State, wsEx.Message);
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    this.logger.Information(
+                        "Received WebSocket message text: {MessageText}",
+                        messageText.Length > 500 ? messageText.Substring(0, 500) + "…" : messageText);
 
                     try
                     {
@@ -291,7 +366,15 @@ namespace NexusTeam.Server.Middleware
 
                     try
                     {
-                        receiveResult = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                        var next = await this.ReceiveTextMessageAsync(webSocket, CancellationToken.None);
+                        receiveResult = next.Result;
+                        messageText = next.Text;
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        this.logger.Warning(ex, "Rejected oversized WebSocket message from user {UserId}", userId);
+                        await this.CloseWebSocketSafelyAsync(webSocket, WebSocketCloseStatus.MessageTooBig, "Message too large");
+                        break;
                     }
                     catch (WebSocketException wsEx) when (webSocket.State == WebSocketState.Aborted || webSocket.State == WebSocketState.Closed)
                     {

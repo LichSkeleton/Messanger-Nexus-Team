@@ -169,18 +169,26 @@ namespace NexusTeam.Server.Controllers
             }
 
             var turnSecret = this.configuration["TurnSecret"];
-            var expires = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds();
+
+            // coturn --use-auth-secret follows draft-uberti-behave-turn-rest:
+            // username = <expiry-unix-seconds>:<user-id>. Credentials must outlive a long call
+            // so ICE/TURN refreshes (needed when screen share ramps bitrate) keep working.
+            var expires = DateTimeOffset.UtcNow.AddHours(24).ToUnixTimeSeconds();
             var iceServers = new List<IceServerDto>
             {
                 new IceServerDto
                 {
                     Urls = new[] { "stun:stun.l.google.com:19302" },
                 },
+                new IceServerDto
+                {
+                    Urls = new[] { $"stun:{turnHost}:3478" },
+                },
             };
 
             if (!string.IsNullOrWhiteSpace(turnSecret))
             {
-                var username = $"{userId}:{expires}";
+                var username = $"{expires}:{userId}";
                 var credential = ComputeHmacSha1Base64(turnSecret, username);
 
                 iceServers.Add(new IceServerDto
@@ -193,6 +201,7 @@ namespace NexusTeam.Server.Controllers
                     },
                     Username = username,
                     Credential = credential,
+                    CredentialType = "password",
                 });
             }
             else
@@ -219,6 +228,8 @@ namespace NexusTeam.Server.Controllers
             public string? Username { get; set; }
 
             public string? Credential { get; set; }
+
+            public string? CredentialType { get; set; }
         }
 
         public sealed class IceServersResponse

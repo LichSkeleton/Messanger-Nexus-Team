@@ -490,16 +490,17 @@ services:
     command:
       - --no-stdout-log
       - --no-tls
+      - --no-dtls
       - --no-tlsv1
       - --no-tlsv1_1
+      - --no-cli
+      - --no-multicast-peers
+      - --fingerprint
+      - --stale-nonce
       - --listening-port
       - "3478"
       - --alt-listening-port
       - "5349"
-      - --listening-ip
-      - 0.0.0.0
-      - --relay-ip
-      - 0.0.0.0
       - --external-ip
       - "${PUBLIC_IP:-127.0.0.1}"
       - --min-port
@@ -508,7 +509,6 @@ services:
       - "49200"
       - --realm
       - "nexusteam"
-      - --fingerprint
       - --use-auth-secret
       - --static-auth-secret
       - "${TURN_SECRET:-nexusteam_turn_secret}"

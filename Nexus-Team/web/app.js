@@ -2194,9 +2194,9 @@
     }
 
     function getIceServers() {
-        if (state.iceServers) return Promise.resolve(state.iceServers);
         return api("GET", "/calls/ice-servers").then(function (data) {
-            state.iceServers = (data && data.iceServers) || [];
+            var list = (data && (data.iceServers || data.IceServers)) || [];
+            state.iceServers = normalizeIceServers(list);
             if (!state.iceServers.length) {
                 state.iceServers = [{ urls: ["stun:stun.l.google.com:19302"] }];
             }
@@ -2205,6 +2205,20 @@
             state.iceServers = [{ urls: ["stun:stun.l.google.com:19302"] }];
             return state.iceServers;
         });
+    }
+
+    function normalizeIceServers(list) {
+        if (!Array.isArray(list)) return [];
+        return list.map(function (server) {
+            var urls = server.urls || server.Urls;
+            if (!urls) return null;
+            return {
+                urls: urls,
+                username: server.username || server.Username,
+                credential: server.credential || server.Credential,
+                credentialType: server.credentialType || server.CredentialType || "password"
+            };
+        }).filter(function (server) { return server && server.urls; });
     }
 
     function updateCallControls(chat) {
@@ -2344,13 +2358,9 @@
         }
         var remoteVideo = $("remoteVideo");
         var remoteFallback = $("remoteFallback");
-        if (state.currentCall && state.currentCall.callType === "audio") {
-            if (remoteVideo) hide(remoteVideo);
-            if (remoteFallback) show(remoteFallback);
-        } else {
-            if (remoteVideo) show(remoteVideo);
-            if (remoteFallback) hide(remoteFallback);
-        }
+        if (remoteVideo) show(remoteVideo);
+        if (remoteFallback) hide(remoteFallback);
+        updateRemoteMediaVisibility();
         if ($("callTimer")) $("callTimer").textContent = "00:00";
         state.currentCall.startedAt = Date.now();
         if (state.currentCall.durationInterval) clearInterval(state.currentCall.durationInterval);
@@ -2373,8 +2383,24 @@
     }
 
     function createPeerConnection() {
-        var config = { iceServers: state.iceServers || [] };
+        var config = {
+            iceServers: state.iceServers || [],
+            bundlePolicy: "max-bundle",
+            rtcpMuxPolicy: "require",
+            iceCandidatePoolSize: 2
+        };
         var pc = new RTCPeerConnection(config);
+        if (state.currentCall && state.currentCall.outgoing) {
+            try {
+                pc.addTransceiver("audio", { direction: "sendrecv" });
+                pc.addTransceiver("video", { direction: "sendrecv" });
+            } catch (e) { /* addTransceiver unavailable; tracks are added later */ }
+        }
+        if (state.currentCall) {
+            state.currentCall.pendingIce = state.currentCall.pendingIce || [];
+            state.currentCall.makingOffer = false;
+            state.currentCall.iceRestarted = false;
+        }
         pc.onicecandidate = function (evt) {
             if (evt.candidate && state.currentCall) {
                 sendSocket(WS.CallIceCandidate, {
@@ -2389,19 +2415,7 @@
         };
         pc.ontrack = function (evt) {
             if (!state.currentCall) return;
-            var remoteVideo = $("remoteVideo");
-            var remoteAudio = $("remoteAudio");
-            if (evt.streams && evt.streams[0]) {
-                if (remoteVideo) remoteVideo.srcObject = evt.streams[0];
-                if (remoteAudio) remoteAudio.srcObject = evt.streams[0];
-                if (state.currentCall.callType === "video") {
-                    if (remoteVideo) show(remoteVideo);
-                    hide($("remoteFallback"));
-                } else {
-                    if (remoteVideo) hide(remoteVideo);
-                    show($("remoteFallback"));
-                }
-            }
+            bindRemoteMedia(evt.streams && evt.streams[0], evt.track);
         };
         pc.onconnectionstatechange = function () {
             if (!state.currentCall) return;
@@ -2409,8 +2423,14 @@
             if (stateName === "connected") {
                 startQualityMonitor(pc);
                 state.currentCall.everConnected = true;
+                state.currentCall.iceRestarted = false;
                 clearDisconnectGrace(state.currentCall);
-            } else if (stateName === "failed" || stateName === "closed") {
+            } else if (stateName === "failed") {
+                if (state.currentCall.ended !== true) {
+                    if (tryIceRestart(state.currentCall, pc)) return;
+                    scheduleDisconnectGrace(state.currentCall, "Connection ended");
+                }
+            } else if (stateName === "closed") {
                 if (state.currentCall.ended !== true) endCurrentCall("Connection ended");
             } else if (stateName === "disconnected") {
                 // "disconnected" is often a transient blip during normal ICE negotiation/renegotiation —
@@ -2423,14 +2443,163 @@
             if (!state.currentCall) return;
             var iceState = pc.iceConnectionState;
             if (iceState === "failed") {
-                if (state.currentCall.ended !== true) endCurrentCall("Call disconnected");
+                if (state.currentCall.ended !== true) {
+                    if (tryIceRestart(state.currentCall, pc)) return;
+                    scheduleDisconnectGrace(state.currentCall, "Call disconnected");
+                }
             } else if (iceState === "disconnected") {
                 scheduleDisconnectGrace(state.currentCall, "Call disconnected");
             } else if (iceState === "connected" || iceState === "completed") {
+                state.currentCall.iceRestarted = false;
                 clearDisconnectGrace(state.currentCall);
             }
         };
         return pc;
+    }
+
+    function tryIceRestart(call, pc) {
+        if (!call || !pc || call.iceRestarted || !call.everConnected || call.ended) return false;
+        if (typeof pc.restartIce !== "function") return false;
+        call.iceRestarted = true;
+        try { pc.restartIce(); } catch (e) { return false; }
+        renegotiate(call);
+        scheduleDisconnectGrace(call, "Call disconnected");
+        return true;
+    }
+
+    function bindRemoteMedia(stream, track) {
+        var remoteVideo = $("remoteVideo");
+        var remoteAudio = $("remoteAudio");
+        if (stream) {
+            if (remoteVideo) {
+                remoteVideo.srcObject = stream;
+                remoteVideo.onresize = function () { updateRemoteMediaVisibility(); };
+                remoteVideo.onloadedmetadata = function () { updateRemoteMediaVisibility(); };
+            }
+            if (remoteAudio) remoteAudio.srcObject = stream;
+        }
+        if (track) {
+            track.onunmute = function () { updateRemoteMediaVisibility(); };
+            track.onmute = function () { updateRemoteMediaVisibility(); };
+            track.onended = function () { updateRemoteMediaVisibility(); };
+        }
+        updateRemoteMediaVisibility();
+    }
+
+    function updateRemoteMediaVisibility() {
+        var call = state.currentCall;
+        var remoteVideo = $("remoteVideo");
+        var remoteFallback = $("remoteFallback");
+        if (!call) return;
+        var hasRemoteVideo = !!(remoteVideo && remoteVideo.videoWidth > 2 && remoteVideo.videoHeight > 2);
+        if (!hasRemoteVideo && call.pc && call.pc.getReceivers) {
+            call.pc.getReceivers().forEach(function (receiver) {
+                if (receiver.track && receiver.track.kind === "video" && receiver.track.readyState === "live" && !receiver.track.muted) {
+                    hasRemoteVideo = true;
+                }
+            });
+        }
+        var showVideo = call.callType === "video" || hasRemoteVideo;
+        if (remoteVideo) {
+            remoteVideo.classList.toggle("contain", !!(hasRemoteVideo && (call.screenStream || call.callType !== "video")));
+            if (showVideo) show(remoteVideo); else hide(remoteVideo);
+        }
+        if (remoteFallback) {
+            if (showVideo) hide(remoteFallback); else show(remoteFallback);
+        }
+    }
+
+    function findSenderForKind(pc, kind) {
+        if (!pc) return null;
+        var senders = pc.getSenders();
+        var i;
+        for (i = 0; i < senders.length; i++) {
+            if (senders[i].track && senders[i].track.kind === kind) return senders[i];
+        }
+        var transceivers = pc.getTransceivers ? pc.getTransceivers() : [];
+        for (i = 0; i < transceivers.length; i++) {
+            var transceiver = transceivers[i];
+            var receiverKind = transceiver.receiver && transceiver.receiver.track && transceiver.receiver.track.kind;
+            var senderKind = transceiver.sender && transceiver.sender.track && transceiver.sender.track.kind;
+            if (receiverKind === kind || senderKind === kind) return transceiver.sender;
+        }
+        return null;
+    }
+
+    function attachTrackToPeer(call, track, stream) {
+        var pc = call && call.pc;
+        if (!pc || !track) return Promise.resolve(false);
+        var sender = findSenderForKind(pc, track.kind);
+        if (sender) {
+            var transceiver = pc.getTransceivers ? pc.getTransceivers().find(function (item) { return item.sender === sender; }) : null;
+            var needsRenegotiation = false;
+            if (transceiver && transceiver.currentDirection && transceiver.currentDirection.indexOf("send") === -1) {
+                try { transceiver.direction = "sendrecv"; needsRenegotiation = true; } catch (e) { }
+            }
+            if (!sender.track) needsRenegotiation = true;
+            return sender.replaceTrack(track).then(function () {
+                return needsRenegotiation;
+            });
+        }
+        pc.addTrack(track, stream);
+        return Promise.resolve(true);
+    }
+
+    function applyVideoSenderParams(sender, forScreen) {
+        if (!sender || !sender.getParameters || !sender.setParameters) return;
+        var params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        params.encodings.forEach(function (encoding) {
+            encoding.maxBitrate = forScreen ? 1500 * 1000 : 800 * 1000;
+            encoding.maxFramerate = forScreen ? 15 : 24;
+        });
+        sender.setParameters(params).catch(function () { /* encodings may be unset until first negotiation */ });
+    }
+
+    function isPolitePeer(call) {
+        return !!(state.me && call && state.me.id && call.remoteUserId && state.me.id < call.remoteUserId);
+    }
+
+    function sendLocalDescription(call) {
+        if (!call || !call.pc || !call.pc.localDescription) return;
+        var desc = call.pc.localDescription;
+        sendSocket(desc.type === "answer" ? WS.CallSdpAnswer : WS.CallSdpOffer, {
+            callId: call.callId,
+            fromUserId: state.me.id,
+            toUserId: call.remoteUserId,
+            sdp: desc.sdp,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    function renegotiate(call) {
+        if (!call || !call.pc || call.ended) return Promise.resolve();
+        if (call.pc.signalingState !== "stable") return Promise.resolve();
+        call.makingOffer = true;
+        return call.pc.createOffer()
+            .then(function (offer) { return call.pc.setLocalDescription(offer); })
+            .then(function () { sendLocalDescription(call); })
+            .catch(function (err) { console.warn("Renegotiation failed", err); })
+            .then(function () { call.makingOffer = false; });
+    }
+
+    function enqueueOrAddIce(call, candidate) {
+        if (!call || !call.pc || !candidate) return;
+        if (!call.pc.remoteDescription) {
+            call.pendingIce = call.pendingIce || [];
+            call.pendingIce.push(candidate);
+            return;
+        }
+        call.pc.addIceCandidate(candidate).catch(function (err) {
+            console.warn("ICE candidate failed", err);
+        });
+    }
+
+    function flushPendingIce(call) {
+        if (!call || !call.pendingIce || !call.pendingIce.length) return;
+        var queued = call.pendingIce;
+        call.pendingIce = [];
+        queued.forEach(function (candidate) { enqueueOrAddIce(call, candidate); });
     }
 
     function scheduleDisconnectGrace(call, message) {
@@ -2492,55 +2661,106 @@
             toast("Screen sharing is not supported in this browser.");
             return;
         }
-        navigator.mediaDevices.getDisplayMedia({ video: true }).then(function (screenStream) {
-            var screenTrack = screenStream.getVideoTracks()[0];
-            if (!screenTrack) return;
-            var sender = call.pc.getSenders().find(function (s) { return s.track && s.track.kind === "video"; });
-            if (sender) sender.replaceTrack(screenTrack);
-            call.screenStream = screenStream;
-            call.screenSender = sender;
-            var localVideo = $("localVideo");
-            if (localVideo) { localVideo.srcObject = screenStream; show(localVideo); }
-            var btn = $("screenShareCallBtn");
-            if (btn) btn.classList.add("active");
-            screenTrack.onended = function () { stopScreenShare(false); };
+        navigator.mediaDevices.getDisplayMedia({
+            video: {
+                frameRate: { ideal: 10, max: 15 },
+                width: { max: 1920 },
+                height: { max: 1080 }
+            },
+            audio: false
         }).catch(function (err) {
-            toast("Screen share unavailable: " + (err.message || err));
+            if (err && err.name === "OverconstrainedError") {
+                return navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            }
+            throw err;
+        }).then(function (screenStream) {
+            if (!state.currentCall || state.currentCall !== call || !call.pc) {
+                screenStream.getTracks().forEach(function (track) { track.stop(); });
+                return;
+            }
+            var screenTrack = screenStream.getVideoTracks()[0];
+            if (!screenTrack) {
+                screenStream.getTracks().forEach(function (track) { track.stop(); });
+                return;
+            }
+            try { screenTrack.contentHint = "detail"; } catch (e) { }
+            screenTrack.onended = function () { stopScreenShare(false); };
+            return attachTrackToPeer(call, screenTrack, screenStream).then(function (needsRenegotiation) {
+                if (!state.currentCall || state.currentCall !== call) {
+                    screenStream.getTracks().forEach(function (track) { track.stop(); });
+                    return;
+                }
+                call.screenStream = screenStream;
+                call.screenSender = findSenderForKind(call.pc, "video");
+                applyVideoSenderParams(call.screenSender, true);
+                var localVideo = $("localVideo");
+                if (localVideo) {
+                    localVideo.srcObject = screenStream;
+                    localVideo.classList.add("contain");
+                    show(localVideo);
+                }
+                var previewLabel = $("localPreviewLabel");
+                if (previewLabel) previewLabel.textContent = "Your screen";
+                var btn = $("screenShareCallBtn");
+                if (btn) btn.classList.add("active");
+                updateRemoteMediaVisibility();
+                if (needsRenegotiation) return renegotiate(call);
+            });
+        }).then(function () {
+            if (state.currentCall && state.currentCall.screenStream) toast("Screen sharing started");
+        }).catch(function (err) {
+            if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) return;
+            toast("Screen share unavailable: " + (err && err.message ? err.message : err));
         });
     }
 
     function stopScreenShare(silent) {
         var call = state.currentCall;
         if (!call || !call.screenStream) return;
-        call.screenStream.getTracks().forEach(function (t) { t.stop(); });
+        call.screenStream.getTracks().forEach(function (track) { track.stop(); });
         var cameraTrack = call.localStream && call.localStream.getVideoTracks()[0];
-        if (call.screenSender && cameraTrack) {
-            call.screenSender.replaceTrack(cameraTrack);
+        var sender = call.screenSender || findSenderForKind(call.pc, "video");
+        if (sender) {
+            sender.replaceTrack(cameraTrack || null).catch(function () { });
+            applyVideoSenderParams(sender, false);
         }
         var localVideo = $("localVideo");
         if (localVideo) {
             localVideo.srcObject = call.localStream || null;
-            if (!(call.localStream && call.localStream.getVideoTracks().length)) hide(localVideo);
+            localVideo.classList.remove("contain");
+            if (!(call.localStream && call.localStream.getVideoTracks().length) || call.callType !== "video") hide(localVideo);
+            else show(localVideo);
         }
+        var previewLabel = $("localPreviewLabel");
+        if (previewLabel) previewLabel.textContent = "You";
         call.screenStream = null;
         call.screenSender = null;
         var btn = $("screenShareCallBtn");
         if (btn) btn.classList.remove("active");
+        updateRemoteMediaVisibility();
         if (!silent) toast("Screen sharing stopped");
     }
 
     function applyLocalStream(stream) {
-        if (!state.currentCall) return;
+        if (!state.currentCall) return Promise.resolve();
         state.currentCall.localStream = stream;
-        state.currentCall.localStream.getTracks().forEach(function (track) {
-            if (state.currentCall.pc) state.currentCall.pc.addTrack(track, state.currentCall.localStream);
-        });
+        var pc = state.currentCall.pc;
+        var attachments = [];
+        if (pc) {
+            stream.getTracks().forEach(function (track) {
+                attachments.push(attachTrackToPeer(state.currentCall, track, stream).catch(function () {
+                    try { pc.addTrack(track, stream); } catch (e) { }
+                }));
+            });
+        }
         var localVideo = $("localVideo");
         if (localVideo && stream) {
             localVideo.srcObject = stream;
+            localVideo.classList.remove("contain");
             if (state.currentCall.callType === "video") show(localVideo);
             else hide(localVideo);
         }
+        return Promise.all(attachments);
     }
 
     function requestLocalMedia(callType) {
@@ -2617,7 +2837,7 @@
                 call.pc = createPeerConnection();
                 return requestLocalMedia(callType).then(function (stream) {
                     if (!state.currentCall || state.currentCall.callId !== callId) return;
-                    applyLocalStream(stream);
+                    return applyLocalStream(stream);
                 });
             }).catch(function (err) {
                 if (state.currentCall && state.currentCall.callId === callId) {
@@ -2638,19 +2858,20 @@
         getIceServers().then(function () {
             call.pc = createPeerConnection();
             requestLocalMedia(call.callType).then(function (stream) {
-                applyLocalStream(stream);
-                sendSocket(WS.CallAnswer, {
-                    callId: call.callId,
-                    fromUserId: state.me.id,
-                    toUserId: call.remoteUserId,
-                    timestamp: new Date().toISOString()
+                return applyLocalStream(stream).then(function () {
+                    sendSocket(WS.CallAnswer, {
+                        callId: call.callId,
+                        fromUserId: state.me.id,
+                        toUserId: call.remoteUserId,
+                        timestamp: new Date().toISOString()
+                    });
+                    if (call.timeoutHandle) clearTimeout(call.timeoutHandle);
+                    call.timeoutHandle = setTimeout(function () {
+                        if (state.currentCall && state.currentCall.callId === call.callId) {
+                            endCurrentCall("Call failed to connect");
+                        }
+                    }, 30000);
                 });
-                if (call.timeoutHandle) clearTimeout(call.timeoutHandle);
-                call.timeoutHandle = setTimeout(function () {
-                    if (state.currentCall && state.currentCall.callId === call.callId) {
-                        endCurrentCall("Call failed to connect");
-                    }
-                }, 30000);
             }).catch(function (err) {
                 toast("Media error: " + (err.message || err));
                 endCurrentCall();
@@ -2753,44 +2974,60 @@
         }).then(function (offer) {
             return call.pc.setLocalDescription(offer);
         }).then(function () {
-            sendSocket(WS.CallSdpOffer, {
-                callId: call.callId,
-                fromUserId: state.me.id,
-                toUserId: call.remoteUserId,
-                sdp: call.pc.localDescription.sdp,
-                timestamp: new Date().toISOString()
-            });
+            sendLocalDescription(call);
             showActiveCall();
         }).catch(function (err) { toast("Call failed: " + (err.message || err)); endCurrentCall(); });
     }
 
     function handleCallSdpOffer(payload) {
         if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId) return;
-        state.currentCall.accepted = true;
+        var call = state.currentCall;
+        call.accepted = true;
+        var sdp = pick(payload, "sdp", "Sdp");
+        if (!sdp) return;
 
-        var ensurePc = state.currentCall.pc ? Promise.resolve() : getIceServers().then(function () {
-            state.currentCall.pc = createPeerConnection();
-            return requestLocalMedia(state.currentCall.callType).then(function (stream) {
-                applyLocalStream(stream);
+        var ensurePc = call.pc ? Promise.resolve() : getIceServers().then(function () {
+            call.pc = createPeerConnection();
+            return requestLocalMedia(call.callType).then(function (stream) {
+                return applyLocalStream(stream);
             });
         });
 
+        var ignored = false;
         ensurePc.then(function () {
-            return state.currentCall.pc.setRemoteDescription({ type: "offer", sdp: payload.sdp });
+            var pc = call.pc;
+            var collision = !!(call.makingOffer || (pc.signalingState !== "stable"));
+            if (collision) {
+                if (!isPolitePeer(call)) {
+                    ignored = true;
+                    return;
+                }
+                return Promise.resolve().then(function () {
+                    if (pc.signalingState === "have-local-offer") {
+                        return pc.setLocalDescription({ type: "rollback" });
+                    }
+                }).then(function () {
+                    return pc.setRemoteDescription({ type: "offer", sdp: sdp });
+                });
+            }
+            return pc.setRemoteDescription({ type: "offer", sdp: sdp });
         }).then(function () {
-            return state.currentCall.pc.createAnswer();
+            if (ignored || !call.pc) return;
+            flushPendingIce(call);
+            return call.pc.createAnswer();
         }).then(function (answer) {
-            return state.currentCall.pc.setLocalDescription(answer);
+            if (!answer || !call.pc) return;
+            return call.pc.setLocalDescription(answer);
         }).then(function () {
-            sendSocket(WS.CallSdpAnswer, {
-                callId: state.currentCall.callId,
-                fromUserId: state.me.id,
-                toUserId: state.currentCall.remoteUserId,
-                sdp: state.currentCall.pc.localDescription.sdp,
-                timestamp: new Date().toISOString()
-            });
+            if (ignored || !call.pc || !call.pc.localDescription) return;
+            sendLocalDescription(call);
             showActiveCall();
+            updateRemoteMediaVisibility();
         }).catch(function (err) {
+            if (call.everConnected) {
+                console.warn("SDP offer error during call", err);
+                return;
+            }
             toast("Answer error: " + (err.message || err));
             endCurrentCall();
         });
@@ -2798,17 +3035,30 @@
 
     function handleCallSdpAnswer(payload) {
         if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId || !state.currentCall.pc) return;
-        state.currentCall.pc.setRemoteDescription({ type: "answer", sdp: payload.sdp }).catch(function (err) {
-            toast("Unable to set remote answer: " + (err.message || err)); endCurrentCall();
+        var call = state.currentCall;
+        var sdp = pick(payload, "sdp", "Sdp");
+        if (!sdp) return;
+        call.pc.setRemoteDescription({ type: "answer", sdp: sdp }).then(function () {
+            flushPendingIce(call);
+            updateRemoteMediaVisibility();
+        }).catch(function (err) {
+            if (call.everConnected) {
+                console.warn("SDP answer error during call", err);
+                return;
+            }
+            toast("Unable to set remote answer: " + (err.message || err));
+            endCurrentCall();
         });
     }
 
     function handleCallIceCandidate(payload) {
         if (!payload || !state.currentCall || state.currentCall.callId !== payload.callId || !state.currentCall.pc) return;
-        var candidate = { candidate: payload.candidate, sdpMid: payload.sdpMid, sdpMLineIndex: payload.sdpMLineIndex };
-        state.currentCall.pc.addIceCandidate(candidate).catch(function (err) {
-            console.warn("ICE candidate failed", err);
-        });
+        var candidate = {
+            candidate: pick(payload, "candidate", "Candidate"),
+            sdpMid: pick(payload, "sdpMid", "SdpMid"),
+            sdpMLineIndex: pick(payload, "sdpMLineIndex", "SdpMLineIndex")
+        };
+        enqueueOrAddIce(state.currentCall, candidate);
     }
 
     function handleCallEnd(payload) {
