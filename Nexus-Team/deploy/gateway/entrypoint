@@ -1,0 +1,35 @@
+#!/bin/sh
+
+set -eu
+
+certificate_state() {
+  certificate_directory="/etc/letsencrypt/live/$PUBLIC_IP"
+  certificate_timestamp="$(stat -c '%Y' "$certificate_directory/fullchain.pem" 2>/dev/null || true)"
+  reload_timestamp="$(stat -c '%Y' /var/www/certbot/.reload 2>/dev/null || true)"
+  printf '%s:%s' "$certificate_timestamp" "$reload_timestamp"
+}
+
+/usr/local/bin/configure-gateway
+nginx -g 'daemon off;' &
+nginx_pid="$!"
+last_state="$(certificate_state)"
+
+shutdown() {
+  nginx -s quit 2>/dev/null || true
+  wait "$nginx_pid" 2>/dev/null || true
+  exit 0
+}
+
+trap shutdown TERM INT
+
+while kill -0 "$nginx_pid" 2>/dev/null; do
+  sleep 30 &
+  wait "$!" || true
+  current_state="$(certificate_state)"
+  if [ "$current_state" != "$last_state" ]; then
+    /usr/local/bin/configure-gateway reload
+    last_state="$current_state"
+  fi
+done
+
+wait "$nginx_pid"

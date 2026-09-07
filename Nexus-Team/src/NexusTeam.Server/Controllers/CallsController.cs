@@ -157,10 +157,15 @@ namespace NexusTeam.Server.Controllers
                 return this.Unauthorized();
             }
 
-            var requestHost = this.HttpContext.Request.Host.Host;
-            if (string.IsNullOrWhiteSpace(requestHost))
+            var turnHost = this.configuration["TurnExternalHost"];
+            if (string.IsNullOrWhiteSpace(turnHost))
             {
-                requestHost = "localhost";
+                turnHost = this.HttpContext.Request.Host.Host;
+            }
+
+            if (string.IsNullOrWhiteSpace(turnHost))
+            {
+                turnHost = "localhost";
             }
 
             var turnSecret = this.configuration["TurnSecret"];
@@ -182,8 +187,9 @@ namespace NexusTeam.Server.Controllers
                 {
                     Urls = new[]
                     {
-                        $"turn:{requestHost}:3478?transport=udp",
-                        $"turn:{requestHost}:5349?transport=tcp",
+                        $"turn:{turnHost}:3478?transport=udp",
+                        $"turn:{turnHost}:3478?transport=tcp",
+                        $"turn:{turnHost}:5349?transport=tcp",
                     },
                     Username = username,
                     Credential = credential,
